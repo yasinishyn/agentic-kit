@@ -5,85 +5,94 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Kanban</title>
 <style>
-  :root { --bg:#f4f5f7; --col:#e9ebee; --card:#fff; --text:#1d2330; --muted:#667085; --line:#d0d5dd;
-          --doing:#2e6be6; --review:#b25e09; --done:#157f3b; --todo:#667085; }
+  :root { --bg:#f4f5f7; --col:#e9ebee; --card:#fff; --text:#1d2330; --muted:#667085; --line:#d0d5dd; --accent:#2e6be6;
+          --ok:#157f3b; --warn:#b25e09; --bad:#b42318; }
   @media (prefers-color-scheme: dark) {
     :root { --bg:#12151b; --col:#1b2029; --card:#232a35; --text:#e6e9ef; --muted:#98a2b3; --line:#344054; }
   }
-  * { box-sizing: border-box; }
-  body { margin:0; font:14px/1.4 system-ui,-apple-system,Segoe UI,sans-serif; background:var(--bg); color:var(--text); }
-  header { display:flex; gap:12px; align-items:center; padding:12px 16px; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:13px/1.4 system-ui,-apple-system,Segoe UI,sans-serif; background:var(--bg); color:var(--text); }
+  header { display:flex; gap:12px; align-items:center; padding:12px 16px; flex-wrap:wrap; }
   header h1 { font-size:16px; margin:0; }
-  header .muted { color:var(--muted); font-size:12px; }
+  .muted { color:var(--muted); font-size:12px; }
   form { margin-left:auto; display:flex; gap:6px; }
-  input { padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--text); width:min(280px,50vw); }
-  button { border:1px solid var(--line); background:var(--card); color:var(--text); border-radius:6px; padding:4px 8px; cursor:pointer; }
-  main { display:grid; grid-template-columns:repeat(4, minmax(220px,1fr)); gap:12px; padding:0 16px 16px; overflow-x:auto; }
-  .col { background:var(--col); border-radius:10px; padding:10px; min-height:60vh; }
-  .col h2 { font-size:13px; margin:0 0 8px; display:flex; justify-content:space-between; }
-  .card { background:var(--card); border-radius:8px; padding:8px 10px; margin-bottom:8px; border-left:4px solid var(--todo);
-          box-shadow:0 1px 2px rgba(0,0,0,.08); }
-  .card.doing { border-left-color:var(--doing); } .card.review { border-left-color:var(--review); } .card.done { border-left-color:var(--done); opacity:.8; }
-  .card.child { margin-left:14px; }
-  .meta { color:var(--muted); font-size:11px; display:flex; gap:6px; flex-wrap:wrap; margin-top:4px; }
-  .steps { margin:6px 0 0; padding-left:18px; font-size:12px; }
-  .steps .ok { text-decoration:line-through; color:var(--muted); }
-  .note { font-size:12px; color:var(--muted); margin-top:4px; white-space:pre-wrap; }
-  .actions { display:flex; gap:4px; margin-top:6px; }
-  .actions button { font-size:11px; padding:2px 6px; }
+  input { padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--text); width:min(300px,60vw); }
+  button, select { border:1px solid var(--line); background:var(--card); color:var(--text); border-radius:6px; padding:3px 7px; cursor:pointer; font-size:12px; }
+  main { display:grid; grid-template-columns:repeat(8, minmax(210px,1fr)); gap:10px; padding:0 16px 16px; overflow-x:auto; }
+  .col { background:var(--col); border-radius:10px; padding:8px; min-height:70vh; }
+  .col h2 { font-size:12px; text-transform:uppercase; letter-spacing:.04em; margin:2px 4px 8px; display:flex; justify-content:space-between; color:var(--muted); }
+  .card { background:var(--card); border-radius:8px; padding:8px 10px; margin-bottom:8px; border-left:4px solid var(--accent); box-shadow:0 1px 2px rgba(0,0,0,.08); }
+  .card.done { border-left-color:var(--ok); } .card.approval { border-left-color:var(--warn); }
+  .title a { color:inherit; font-weight:600; text-decoration:none; } .title a:hover { text-decoration:underline; }
+  .bar { height:4px; background:var(--line); border-radius:2px; margin:6px 0 2px; overflow:hidden; }
+  .bar > i { display:block; height:100%; background:var(--ok); }
+  .subs { list-style:none; margin:6px 0 0; padding:0; }
+  .subs li { display:flex; gap:6px; align-items:center; padding:2px 0; border-top:1px dashed var(--line); }
+  .subs a { color:inherit; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .st-done a { text-decoration:line-through; color:var(--muted); } .st-blocked a { color:var(--bad); }
+  details { margin-top:6px; } summary { cursor:pointer; color:var(--muted); font-size:11px; }
+  details a { display:block; font-size:11px; color:var(--accent); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .actions { display:flex; gap:4px; margin-top:6px; align-items:center; }
+  .warn { color:var(--warn); font-size:11px; }
+  .empty { color:var(--muted); padding:24px 16px; }
 </style>
 </head>
 <body>
 <header>
   <h1>Kanban</h1><span class="muted" id="project"></span>
-  <form id="add"><input id="title" placeholder="Add a card…" maxlength="120"><button>Add</button></form>
+  <span class="muted">Tickets are <code>.SDD/specs/&lt;slug&gt;/README.md</code> · status in frontmatter</span>
+  <form id="add"><input id="title" placeholder="New ticket title… (creates a spec folder)" maxlength="120"><button>Create</button></form>
 </header>
 <main id="board"></main>
 <script>
-const ORDER = ["todo", "doing", "review", "done"];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const view = p => `/view?path=${encodeURIComponent(p)}`;
+let last = "", editor = "", root = "";
 async function post(path, body) {
-  await fetch(path, {method:"POST", headers:{"Content-Type":"application/json","X-Kanban":"1"}, body:JSON.stringify(body)});
-  load();
+  const r = await fetch(path, {method:"POST", headers:{"Content-Type":"application/json","X-Kanban":"1"}, body:JSON.stringify(body)});
+  if (!r.ok) alert((await r.json().catch(() => ({}))).error || "Failed");
+  last = ""; load();
 }
-function cardHtml(c, labels) {
-  const i = ORDER.indexOf(c.status);
-  const done = c.steps.filter(s => s.done).length;
-  const steps = c.steps.length ? `<ol class="steps">${c.steps.map(s => `<li class="${s.done?"ok":""}">${esc(s.text)}</li>`).join("")}</ol>` : "";
-  return `<div class="card ${c.status} ${c.parent ? "child" : ""}">
-    <div><strong>${esc(c.id)}</strong> ${esc(c.title)}</div>
-    ${c.note ? `<div class="note">${esc(c.note)}</div>` : ""}${steps}
-    <div class="meta"><span>${esc(c.source)}</span>${c.parent ? `<span>in ${esc(c.parent)}</span>` : ""}
-      ${c.steps.length ? `<span>${done}/${c.steps.length} steps</span>` : ""}<span>${esc((c.updated||"").slice(0,16).replace("T"," "))}</span></div>
+const edit = p => esc(editor.replace("{path}", root + "/" + p));
+function ticketHtml(t, stages) {
+  const i = stages.findIndex(s => s[0] === t.status);
+  const pct = t.progress.total ? Math.round(100 * t.progress.done / t.progress.total) : 0;
+  const subs = t.subtasks.map(s => `<li class="st-${esc(s.status)}">
+      <select data-path="${esc(s.path)}">${["todo","doing","blocked","done"].map(o => `<option ${o===s.status?"selected":""}>${o}</option>`).join("")}</select>
+      <a href="${view(s.path)}" title="${esc(s.title)} — ${esc(s.path)}">${esc(s.title)}</a><span class="muted">${s.total ? `${s.done}/${s.total}` : ""}</span></li>`).join("");
+  return `<div class="card ${esc(t.status)}">
+    <div class="title">${t.path ? `<a href="${view(t.path)}">${esc(t.title)}</a>` : esc(t.title)}</div>
+    <div class="muted">${esc(t.id)}${t.updated ? " · " + esc(t.updated) : ""}${t.path ? ` · <a href="${edit(t.path)}">open in editor</a>` : ""}</div>
+    ${t.status_set ? "" : `<div class="warn">no <code>status:</code> in README frontmatter</div>`}
+    ${t.progress.total ? `<div class="bar"><i style="width:${pct}%"></i></div><div class="muted">${t.progress.done}/${t.progress.total} checked</div>` : ""}
+    ${subs ? `<ul class="subs">${subs}</ul>` : ""}
+    ${t.files.length ? `<details><summary>${t.files.length} files</summary>${t.files.map(f => `<a href="${view(f)}" title="${esc(f)}">${esc(f.split("/").slice(3).join("/") || f)}</a>`).join("")}</details>` : ""}
     <div class="actions">
-      ${i > 0 ? `<button data-move="${esc(c.id)}" data-to="${ORDER[i-1]}">← ${esc(labels[ORDER[i-1]])}</button>` : ""}
-      ${i < 3 ? `<button data-move="${esc(c.id)}" data-to="${ORDER[i+1]}">${esc(labels[ORDER[i+1]])} →</button>` : ""}
-      <button data-del="${esc(c.id)}" title="Delete">✕</button>
+      ${i > 0 ? `<button data-t="${esc(t.id)}" data-s="${stages[i-1][0]}">← ${esc(stages[i-1][1])}</button>` : ""}
+      ${i < stages.length - 1 ? `<button data-t="${esc(t.id)}" data-s="${stages[i+1][0]}">${esc(stages[i+1][1])} →</button>` : ""}
     </div></div>`;
 }
-let last = "";
 async function load() {
   const r = await fetch("/api/board", {cache:"no-store"}); if (!r.ok) return;
-  const raw = await r.text(); if (raw === last) return;   // redraw only on change, so clicks never hit a stale DOM
-  last = raw; const b = JSON.parse(raw);
+  const raw = await r.text(); if (raw === last) return;   // redraw only on change
+  last = raw; const b = JSON.parse(raw); editor = b.editor; root = b.root;
   document.getElementById("project").textContent = b.project;
-  document.getElementById("board").innerHTML = ORDER.map(s => {
-    const cards = b.cards.filter(c => c.status === s);
-    const ordered = cards.filter(c => !c.parent || !cards.some(p => p.id === c.parent))
-      .flatMap(p => [p, ...cards.filter(c => c.parent === p.id)]);
-    const rest = cards.filter(c => !ordered.includes(c));
-    return `<section class="col"><h2><span>${esc(b.statuses[s])}</span><span>${cards.length}</span></h2>
-      ${[...ordered, ...rest].reverse().map(c => cardHtml(c, b.statuses)).join("")}</section>`;
-  }).join("");
+  document.getElementById("board").innerHTML = b.tickets.length ? b.stages.map(([key, label]) => {
+    const ts = b.tickets.filter(t => t.status === key);
+    return `<section class="col"><h2><span>${esc(label)}</span><span>${ts.length}</span></h2>${ts.map(t => ticketHtml(t, b.stages)).join("")}</section>`;
+  }).join("") : `<div class="empty">No tickets yet. Ask Claude to spec something, or create one above.</div>`;
 }
 document.addEventListener("click", e => {
-  const m = e.target.closest("[data-move]"), d = e.target.closest("[data-del]");
-  if (m) post("/api/move", {card_id:m.dataset.move, status:m.dataset.to});
-  if (d && confirm(`Delete ${d.dataset.del}?`)) post("/api/delete", {card_id:d.dataset.del});
+  const m = e.target.closest("button[data-t]");
+  if (m) post("/api/move", {ticket:m.dataset.t, stage:m.dataset.s});
+});
+document.addEventListener("change", e => {
+  const s = e.target.closest("select[data-path]");
+  if (s) post("/api/status", {path:s.dataset.path, status:s.value});
 });
 document.getElementById("add").addEventListener("submit", e => {
   e.preventDefault(); const t = document.getElementById("title");
-  if (t.value.trim()) { post("/api/add", {title:t.value.trim()}); t.value = ""; }
+  if (t.value.trim()) { post("/api/new", {title:t.value.trim()}); t.value = ""; }
 });
 load(); setInterval(load, 2000);
 </script>

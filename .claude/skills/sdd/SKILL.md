@@ -106,17 +106,23 @@ followed by the brief.
 - **After each wave:** check the main checkout's branch and HEAD are unchanged and each stream's
   `git diff --name-only` ⊆ its owned files; merge locally with `--no-ff`; run the full gates; update the registers.
 
-## Progress board (optional: `kanban` plugin)
-If the `kanban` MCP tools are available (`mcp__plugin_kanban_kanban__*`; load them with ToolSearch "kanban"),
-record the flow on the board so the user can follow it. Details are in the plugin's `kanban` skill.
-- **Start of a feature:** add a card `SDD: <slug>` in `doing` with one step per stage (Discovery, Architect, Approval,
-  Developer, QA, Demo, E2E, Hand-off) and the spec path as its note.
-- **Each gate that passes:** tick that stage's step. At the approval STOP, move the card to `review`; back to `doing`
-  on "execute".
-- **Architect stage:** one child card per PRD (`PRD-NN: <title>`, `todo`). Move it to `doing` when its stream starts,
-  to `review` when its gates are green, and to `done` after QA accepts it.
-- **Blocking open questions:** optional child cards `OQ <id>: …` in `review`.
-- **Who updates it:** the main session, at stage boundaries only; subagents don't. A board failure never blocks the work.
+## Ticket status lives in the markdown (always)
+Each spec folder is a ticket on the kanban board, and the markdown is the source of truth. It works with or without the
+`kanban` plugin; the plugin only displays it and edits it for you.
+- **`README.md` frontmatter:** `title`, `status`, `updated`. Status is the stage: `discovery | architect | approval |
+  developer | qa | demo | e2e | done`. Template: `.SDD/templates/ticket.md` (it includes a `## Progress` checklist, one
+  box per stage).
+- **Gates:** when a stage gate passes, set `status:` to the next stage, tick that stage's Progress box and set
+  `updated:`.
+  - Architect → `approval` means STOP.
+  - `developer` only after the user says "execute".
+  - `done` only after the hand-off with evidence.
+- **Sub-tasks:** each `prd/PRD-NN-*.md` (and optional `tasks/NN-*.md`) has frontmatter `status: todo | doing | blocked |
+  done`. Their acceptance criteria and tests are checkboxes; tick them as they are proven.
+- **With the plugin:** use the kanban MCP tools (`mcp__plugin_kanban_kanban__*`, via ToolSearch "kanban"):
+  `kanban_new_ticket`, `kanban_move`, `kanban_set_status`, `kanban_check`. The `ticket` skill opens a ticket and
+  kicks off this flow.
+- **Who updates:** the main session, at stage boundaries. A board or tool failure never blocks the work.
 
 ## Non-negotiables
 

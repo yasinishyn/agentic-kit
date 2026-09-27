@@ -1,43 +1,57 @@
 ---
 name: kanban
-description: Use when the kanban MCP tools (kanban_list, kanban_add, kanban_move, kanban_update) are available and you start, split, progress or finish a piece of work, when running an SDD stage or PRD, or when the user asks about progress or "the board". Explains how prompt cards, child cards and steps are used, and how to find the web board URL.
+description: Use when a ticket's stage, a PRD or task status, or a checklist item changes during SDD work, when you finish a stage gate, or when the user asks about progress, tickets or "the board". Explains the markdown ticket format under .SDD/specs, the ADLC columns and the kanban MCP tools, and how to find the web board URL.
 ---
 
-# Kanban: keep the board true
+# Kanban: the board is the `.SDD/specs` markdown
 
-The user watches this board to follow your work. Each user prompt becomes a card automatically:
-- the `UserPromptSubmit` hook adds it to **In progress** and tells you its id (e.g. `K-12`);
-- the `Stop` hook moves it to **Review** when you finish your turn.
+The markdown files are the source of truth; the board only displays them. Keep the files true and the board is true.
 
-You only add structure and move cards; you never need to create the prompt card yourself.
+## Format
+
+| Thing | File | Status field (frontmatter) |
+|---|---|---|
+| **Ticket** (one piece of work that has a spec) | `.SDD/specs/<slug>/README.md` | `status: discovery \| architect \| approval \| developer \| qa \| demo \| e2e \| done`, which is the board column |
+| **Sub-task** | `prd/PRD-NN-*.md` (written by the Architect stage) or `tasks/NN-*.md` | `status: todo \| doing \| blocked \| done` |
+| **Sub-sub-task** | a markdown checkbox `- [ ]` / `- [x]` in either file | ticked or not |
+
+- **Ticket README frontmatter:** `title`, `status`, `updated` (date). The README also has a `## Progress` checklist with one box per stage.
+- **Not tickets:** folders starting with `_` or `.`.
+- **Links:** link other docs with relative markdown links; the board and its file viewer follow them.
 
 ## Tools
-Claude Code shows them as `mcp__plugin_kanban_kanban__<tool>`.
 
-| Tool | Use it to |
+Claude Code shows them as `mcp__plugin_kanban_kanban__<tool>`; load them with ToolSearch "kanban" if they are deferred.
+
+| Tool | Does |
 |---|---|
-| `kanban_list` | See the board and the web URL (tell the user the URL when they ask where the board is) |
-| `kanban_add` | Add a card: `title`, `status` (`todo`, `doing`, `review`, `done`), `parent_id` to nest it under a feature |
-| `kanban_move` | Move a card between columns |
-| `kanban_update` | Rename, set a note, `add_step`, or tick `complete_step` (1-based) |
-| `kanban_delete` | Remove a mistaken or duplicate card |
+| `kanban_board` | Lists tickets by stage, with sub-tasks, progress, paths and the web URL |
+| `kanban_new_ticket` | Creates `.SDD/specs/<slug>/README.md` in Discovery. Never overwrites. |
+| `kanban_move` | Sets the ticket stage and ticks the Progress boxes of earlier stages |
+| `kanban_add_subtask` | Creates `tasks/NN-<slug>.md` (status `todo`) with optional checklist items |
+| `kanban_set_status` | Sets the status of a PRD or task file |
+| `kanban_check` | Ticks or unticks a checkbox, by number or by the start of its label |
 
-## When to use it
-- **Multi-step work** (more than about 3 steps): add the steps to the prompt card with `add_step`, and tick each one as it finishes.
-- **Separate work items** (PRDs, parallel streams, follow-ups the user should see): child cards with `parent_id`.
-  - `todo` = planned, `doing` = working now, `review` = waiting for the user, `done` = accepted or verified.
-- **Before saying something is finished:** move its card to `review`, not `done`. `done` is for work the user accepted, or that passed its gate with evidence (see `verification-before-completion`).
-- **Trivial one-shot questions:** leave the prompt card alone; the hooks handle it.
+**Without the plugin**, edit the frontmatter and checkboxes directly; the result is identical.
 
-## SDD (when the `sdd` skill is running)
-1. At the start of a feature, add one card `SDD: <slug>` in `doing`, with one step per stage in order: Discovery, Architect, Approval, Developer, QA, Demo, E2E, Hand-off. Put the spec path in the note (`.SDD/specs/<slug>/`).
-2. Tick each stage's step when its gate passes. At the approval STOP, move the feature card to `review`; move it back to `doing` when the user says "execute".
-3. In the Architect stage, add one child card per PRD (`PRD-NN: <title>`, `todo`). Move a PRD card to `doing` when its stream starts, to `review` when its gates are green, and to `done` after QA accepts it.
-4. Open questions that block a stage can be child cards in `review` titled `OQ <id>: <short question>`.
-5. The main session updates the board at stage boundaries. Subagents and workflow agents don't need to.
-6. At hand-off, the feature card goes to `review` with the hand-off note path in its note.
+## When to update
+
+**Ticket:**
+- Move it when a stage **gate passes**:
+  - Discovery → Architect when the Discovery exit is met;
+  - Architect → **Approval** when the spec is ready for the user;
+  - Approval → Developer only after the user says "execute";
+  - then QA → Demo → E2E → Done at the hand-off.
+- Never move it forward without the gate's evidence (see `verification-before-completion`). Moving back is allowed: say why in the README.
+
+**Sub-tasks:**
+- A PRD or task goes to `doing` when its stream starts and to `done` when its gates are green and QA accepts it.
+- Use `blocked` plus a one-line reason in the file when it waits on an open question.
+- Tick checkboxes (acceptance criteria, tests) as they are proven.
+
+**Who updates:** the main session, at stage boundaries. Subagents don't have to.
 
 ## Rules
-- **Short, factual titles.** The board is local and gitignored, but still: no secrets, credentials or personal data in titles, notes or steps.
-- **Keep the board truthful:** never move something to `done` without evidence.
-- **If the tools fail,** carry on with the work and mention it once. The board must never block real work.
+- **Content:** titles and notes are factual and neutral. No secrets, credentials, personal data or chat transcripts; the files are committed with the code.
+- **Scope:** don't create tickets for one-off questions. A ticket exists when work produces a specification (see the `ticket` skill).
+- **Failures:** if the tools fail, keep working, edit the markdown directly, and mention it once.

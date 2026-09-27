@@ -1,3 +1,9 @@
+---
+title: PRD-NN - <slice title>
+status: todo   # todo | doing | blocked | done
+updated: <YYYY-MM-DD>
+---
+
 # PRD-NN: <slice title>
 
 | Field | Value |

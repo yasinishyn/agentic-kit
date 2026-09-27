@@ -6,7 +6,7 @@ A project-neutral starter kit for **Claude Code**. It gives any repository:
 - **engineering discipline:** test-driven development, systematic debugging, evidence before "done";
 - **two review agents;**
 - **guardrails** that stop agents from pushing, deploying, calling cloud CLIs or reading credentials;
-- **optionally, a tiny kanban board** where every prompt becomes a card and Claude reports its progress.
+- **optionally, a kanban board** over your spec markdown: tickets are spec folders, and the columns are the ADLC stages.
 
 You pick the parts you want. The installer **only adds**: it never overwrites your files, skills, agents or SDD setup.
 
@@ -37,7 +37,7 @@ or restart it if it was already running.
 | `agents` | `architect` (independent design review), `qa-verifier` (evidence-based QA verdict) | `.claude/agents/` |
 | `guard` | A PreToolUse hook that blocks `git push`, deploy scripts, the AWS CLI, non-local database clients and credential reads; deny rules added to your settings | `.claude/hooks/`, `.claude/settings.json` |
 | `instructions` | A `CLAUDE.md` template (hard rules, how we work) and a long-term memory index | `CLAUDE.md`, `.claude/memory/` |
-| `kanban` | A Claude Code plugin: a card per prompt, MCP tools for Claude, a local web board | installed with `claude plugin …` (see below) |
+| `kanban` | A Claude Code plugin: a board over `.SDD/specs` (tickets = spec folders, columns = stages), MCP tools, a `ticket` kick-off skill | installed with `claude plugin …` (see below) |
 
 All of them except `kanban` are selected by default.
 
@@ -80,9 +80,15 @@ cd ~/agentic-kit && git pull
 
 ## The kanban plugin
 
-Every prompt you type becomes a card in **In progress** and moves to **Review** when Claude finishes. Claude adds
-steps and child cards through MCP tools. With the `sdd` skill it keeps one card per feature, with a step per stage,
-and one card per PRD. The board is served locally at `http://127.0.0.1:<port>/`; ask Claude "where is the board?".
+A board over your `.SDD/specs` markdown:
+- **Ticket:** a spec folder `.SDD/specs/<slug>/`.
+- **Columns:** the ADLC stages (Discovery · Architect · Approval · Developer · QA · Demo · E2E · Done).
+- **Stage:** `status:` in the ticket README's frontmatter.
+- **Sub-tasks:** the PRD files (and optional `tasks/`), each with its own `status:`. Their checkboxes are the steps.
+- **Files:** every markdown file opens from the board, in a viewer or in your editor.
+
+The markdown is the source of truth: the `sdd` skill keeps it current, and the plugin displays and edits it. A prompt
+becomes a ticket only when it produces a spec; the `ticket` skill (`/kanban:ticket <title>`) kicks off SDD for it.
 
 **Install it** (it's a per-user Claude Code plugin; this repository is its marketplace):
 
@@ -93,7 +99,7 @@ claude plugin install kanban@agentic-kit
 
 or `./install.sh <project> --only kanban`, which runs the same two commands.
 
-**Share it with a team:** use `--kanban-scope project`, or commit this to the project's `.claude/settings.json`. Everyone who opens the project is offered the plugin.
+**Share it with a team:** use `--kanban-scope project`, or commit this to the project's `.claude/settings.json`:
 
 ```json
 {
@@ -102,10 +108,7 @@ or `./install.sh <project> --only kanban`, which runs the same two commands.
 }
 ```
 
-**Data:**
-- **Where it's stored:** `<project>/.kanban/board.json`.
-- **Not committed:** it holds your prompts, so it ignores itself in git.
-- **Details:** [plugins/kanban/README.md](plugins/kanban/README.md).
+Details: [plugins/kanban/README.md](plugins/kanban/README.md).
 
 ## After installing
 

@@ -36,7 +36,7 @@ COMPONENTS = {
     "agents": "Review agents: architect, qa-verifier",
     "guard": "Guardrails: guard hook (blocks push/deploy/aws/credential reads) + deny rules merged into .claude/settings.json",
     "instructions": "CLAUDE.md template + .claude/memory/ (long-term memory index)",
-    "kanban": "Kanban plugin: a card per prompt, MCP tools for Claude, local web board (installed with the claude CLI)",
+    "kanban": "Kanban plugin: board over .SDD/specs (tickets = spec folders, columns = ADLC stages) + MCP tools + `ticket` skill (claude CLI)",
 }
 DEFAULT_ON = ["sdd", "skills", "agents", "guard", "instructions"]
 SKILLS = {"sdd": ["sdd"], "skills": ["test-driven-development", "systematic-debugging", "verification-before-completion"]}
