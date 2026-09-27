@@ -12,21 +12,74 @@ You pick the parts you want. The installer **only adds**: it never overwrites yo
 
 ---
 
-## Quick start
-
-```bash
-git clone https://github.com/<you>/agentic-kit.git ~/agentic-kit
-~/agentic-kit/install.sh /path/to/your/project
-```
-
-The installer asks, component by component, what to install. Then open Claude Code in your project's root folder,
-or restart it if it was already running.
+## Installation
 
 **Requirements:**
 - `git`;
 - `bash`;
 - `python3` 3.9 or newer: the installer, the guard hook and the kanban plugin use only the standard library;
 - the `claude` CLI, only for the kanban plugin.
+
+For a **private** repository you need GitHub access set up first, either an SSH key or a personal access token.
+Use the SSH URL (`git@github.com:<you>/agentic-kit.git`) in the commands below if that's how you authenticate.
+
+### 1. Get the kit from GitHub
+
+**First time:** clone it once, anywhere outside your projects.
+
+```bash
+git clone https://github.com/<you>/agentic-kit.git ~/agentic-kit
+```
+
+**Already cloned:** pull the latest version first.
+
+```bash
+git -C ~/agentic-kit pull
+```
+
+### 2. Preview what will change
+
+```bash
+~/agentic-kit/install.sh /path/to/your/project --dry-run --all
+```
+
+Nothing is written. Every line says `added`, `kept (yours)`, `skipped: …` or `merged …`, so you can see that none of your
+files will be overwritten.
+
+### 3. Install into your project
+
+```bash
+~/agentic-kit/install.sh /path/to/your/project
+```
+
+It asks, component by component: `sdd`, `skills`, `agents`, `guard`, `instructions`, `kanban`. To skip the questions:
+
+```bash
+~/agentic-kit/install.sh /path/to/your/project --only sdd,skills,agents --yes
+```
+
+### 4. Optional: the kanban board plugin
+
+Choosing `kanban` in step 3 runs these for you. To do it by hand:
+
+```bash
+claude plugin marketplace add <you>/agentic-kit
+```
+
+```bash
+claude plugin install kanban@agentic-kit
+```
+
+Claude Code keeps its own copy of the marketplace, so the plugin updates separately from your clone (see "Updating").
+
+### 5. Finish in the project
+
+1. Fill in the placeholders: `grep -rn '<your ' CLAUDE.md .claude .SDD`.
+2. If you installed `guard`, add project rules to the CONFIG block in `.claude/hooks/guard_bash.py`, then run
+   `bash .claude/hooks/test_guard_bash.sh`.
+3. Start Claude Code in the project's root folder, or restart it. If you installed the plugin, `/mcp` should list
+   `plugin:kanban:kanban`.
+4. Review the added files (`git status`) and commit them on a feature branch. The kit never pushes; you do.
 
 ## Components
 
@@ -67,16 +120,31 @@ All of them except `kanban` are selected by default.
 
 Each install is recorded in `.claude/agentic-kit/installed.json`: which components, which files, and the hash of each file.
 
-## Updating after a `git pull`
+## Updating
+
+**The kit files in a project:**
 
 ```bash
-cd ~/agentic-kit && git pull
-./install.sh /path/to/your/project --update
+git -C ~/agentic-kit pull
+~/agentic-kit/install.sh /path/to/your/project --update --dry-run   # preview
+~/agentic-kit/install.sh /path/to/your/project --update
 ```
 
-- **Refreshed:** a kit file you haven't touched, i.e. one still identical to what the kit installed.
+- **Refreshed:** a kit file you haven't touched, i.e. one still identical to what the kit installed. The hashes are in `.claude/agentic-kit/installed.json`.
 - **Kept:** a file you edited. The run reports it, and you can compare it with the kit's version yourself.
 - **Added:** new files that appeared in the kit.
+
+**The kanban plugin:** Claude Code updates it from GitHub, not from your clone.
+
+```bash
+claude plugin marketplace update agentic-kit
+```
+
+```bash
+claude plugin update kanban@agentic-kit
+```
+
+Then restart Claude Code.
 
 ## The kanban plugin
 
@@ -109,12 +177,6 @@ or `./install.sh <project> --only kanban`, which runs the same two commands.
 ```
 
 Details: [plugins/kanban/README.md](plugins/kanban/README.md).
-
-## After installing
-
-1. **Fill the placeholders:** `grep -rn '<your ' CLAUDE.md .claude .SDD`. The main ones are your test command and your local environment.
-2. **Guard:** add project rules to the CONFIG block at the top of `.claude/hooks/guard_bash.py`, such as deploy scripts, database host names or forbidden environment variables. Then run `bash .claude/hooks/test_guard_bash.sh`.
-3. **Commit** the added files on a feature branch. The kit never pushes; you do.
 
 ## Using it day to day
 
