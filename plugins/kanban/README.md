@@ -45,7 +45,7 @@ There are no hooks: a prompt becomes a ticket only when it produces a specificat
 ## Install
 
 ```bash
-claude plugin marketplace add <you>/agentic-kit      # or a local path to the kit
+claude plugin marketplace add yasinishyn/agentic-kit      # or a local path to the kit
 claude plugin install kanban@agentic-kit
 ```
 

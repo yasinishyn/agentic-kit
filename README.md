@@ -16,70 +16,162 @@ You pick the parts you want. The installer **only adds**: it never overwrites yo
 
 **Requirements:**
 - `git`;
-- `bash`;
 - `python3` 3.9 or newer: the installer, the guard hook and the kanban plugin use only the standard library;
+- `bash`;
 - the `claude` CLI, only for the kanban plugin.
 
-For a **private** repository you need GitHub access set up first, either an SSH key or a personal access token.
-Use the SSH URL (`git@github.com:<you>/agentic-kit.git`) in the commands below if that's how you authenticate.
+### One command, straight from GitHub
 
-### 1. Get the kit from GitHub
-
-**First time:** clone it once, anywhere outside your projects.
+Run this from anywhere:
 
 ```bash
-git clone https://github.com/<you>/agentic-kit.git ~/agentic-kit
+curl -fsSL https://raw.githubusercontent.com/yasinishyn/agentic-kit/main/get.sh | bash -s -- /path/to/your/project
 ```
 
-**Already cloned:** pull the latest version first.
+What it does:
+1. **Downloads the kit** from `https://github.com/yasinishyn/agentic-kit.git` into `~/.agentic-kit`, a read-only cache. On later runs it fetches the latest version from that full URL.
+2. **Asks which components you want** (`sdd`, `skills`, `agents`, `guard`, `instructions`, `kanban`) and adds them to your project.
+3. **Never overwrites anything** of yours.
+
+Pass installer options after the project path:
 
 ```bash
-git -C ~/agentic-kit pull
+curl -fsSL https://raw.githubusercontent.com/yasinishyn/agentic-kit/main/get.sh | bash -s -- /path/to/your/project --dry-run --all
 ```
 
-### 2. Preview what will change
+That previews the changes and writes nothing. Other options:
+
+| Option | Effect |
+|---|---|
+| `--only sdd,skills,agents --yes` | Pick components without questions |
+| `--all --yes` | Everything, no questions |
+| `--update` | Refresh kit files you haven't edited |
+
+**Prefer to read the script before running it?**
 
 ```bash
-~/agentic-kit/install.sh /path/to/your/project --dry-run --all
+curl -fsSLO https://raw.githubusercontent.com/yasinishyn/agentic-kit/main/get.sh
+less get.sh
+bash get.sh /path/to/your/project
 ```
 
-Nothing is written. Every line says `added`, `kept (yours)`, `skipped: …` or `merged …`, so you can see that none of your
-files will be overwritten.
+**Pin a version:** set `AGENTIC_KIT_REF=<tag or branch>` in front of `bash`, e.g.
+`… | AGENTIC_KIT_REF=v0.2.0 bash -s -- /path/to/your/project`. A fork works the same way with
+`AGENTIC_KIT_REPO=https://github.com/<fork>/agentic-kit.git`.
 
-### 3. Install into your project
+### Or from a clone (for contributors)
 
 ```bash
-~/agentic-kit/install.sh /path/to/your/project
+git clone https://github.com/yasinishyn/agentic-kit.git
+./agentic-kit/install.sh /path/to/your/project
 ```
 
-It asks, component by component: `sdd`, `skills`, `agents`, `guard`, `instructions`, `kanban`. To skip the questions:
+To update later, pull with the full URL:
 
 ```bash
-~/agentic-kit/install.sh /path/to/your/project --only sdd,skills,agents --yes
+git -C agentic-kit pull https://github.com/yasinishyn/agentic-kit.git main
 ```
 
-### 4. Optional: the kanban board plugin
+### The kanban plugin
 
-Choosing `kanban` in step 3 runs these for you. To do it by hand:
+Claude Code installs plugins straight from GitHub, with no clone needed. Choosing `kanban` in the installer runs these for you:
 
 ```bash
-claude plugin marketplace add <you>/agentic-kit
+claude plugin marketplace add yasinishyn/agentic-kit
 ```
 
 ```bash
 claude plugin install kanban@agentic-kit
 ```
 
-Claude Code keeps its own copy of the marketplace, so the plugin updates separately from your clone (see "Updating").
+### Finish in the project
 
-### 5. Finish in the project
+1. **Fill in the placeholders:** `grep -rn '<your ' CLAUDE.md .claude .SDD`.
+2. **Guard:** if you installed it, add project rules to the CONFIG block in `.claude/hooks/guard_bash.py`, then run `bash .claude/hooks/test_guard_bash.sh`.
+3. **Start Claude Code** in the project's root folder, or restart it. With the plugin, `/mcp` lists `plugin:kanban:kanban`.
+4. **Commit:** review the added files (`git status`) and commit them on a feature branch. The kit never pushes; you do.
 
-1. Fill in the placeholders: `grep -rn '<your ' CLAUDE.md .claude .SDD`.
-2. If you installed `guard`, add project rules to the CONFIG block in `.claude/hooks/guard_bash.py`, then run
-   `bash .claude/hooks/test_guard_bash.sh`.
-3. Start Claude Code in the project's root folder, or restart it. If you installed the plugin, `/mcp` should list
-   `plugin:kanban:kanban`.
-4. Review the added files (`git status`) and commit them on a feature branch. The kit never pushes; you do.
+## Components
+
+| Component | What you get | Where it goes |
+|---|---|---|
+| `sdd` | The `sdd` skill plus the process README, spec templates and a `specs/` folder | `.claude/skills/sdd/`, `.SDD/` |
+| `skills` | `test-driven-development`, `systematic-debugging`, `verification-before-completion` | `.claude/skills/` |
+| `agents` | `architect` (independent design review), `qa-verifier` (evidence-based QA verdict) | `.claude/agents/` |
+| `guard` | A PreToolUse hook that blocks `git push`, deploy scripts, the AWS CLI, non-local database clients and credential reads; deny rules added to your settings | `.claude/hooks/`, `.claude/settings.json` |
+| `instructions` | A `CLAUDE.md` template (hard rules, how we work) and a long-term memory index | `CLAUDE.md`, `.claude/memory/` |
+| `kanban` | A Claude Code plugin: a board over `.SDD/specs` (tickets = spec folders, columns = stages), MCP tools, a `ticket` kick-off skill | installed with `claude plugin …` (see below) |
+
+All of them except `kanban` are selected by default.
+
+## Install options
+
+```bash
+./install.sh <project>                          # interactive
+./install.sh <project> --only sdd,skills,agents  # pick components without questions
+./install.sh <project> --all --yes              # everything, no questions
+./install.sh <project> --dry-run                # show what would happen; change nothing
+./install.sh <project> --update                 # after `git pull`: refresh kit files you haven't edited
+./install.sh --list                             # list the components
+./install.sh <project> --only kanban --kanban-scope project   # enable the plugin for everyone in that repo
+```
+
+### What "never overwrites" means exactly
+
+| Situation | What the installer does |
+|---|---|
+| A file already exists | Kept as it is. |
+| A skill or agent with the same name exists (e.g. your own `sdd`) | That whole skill or agent is skipped; the kit never mixes files into yours. |
+| The project already has `.SDD/` | Only missing templates are added. Your README, templates and specs are untouched. |
+| `CLAUDE.md` exists | Left alone. The kit text goes to `.claude/agentic-kit/CLAUDE.kit.md`; add `@.claude/agentic-kit/CLAUDE.kit.md` to your `CLAUDE.md` if you want it. |
+| `.claude/settings.json` exists | **Merged by adding only:** missing deny/ask rules and the guard hook. Your values stay. A backup `settings.json.bak-<time>` is written first. |
+| The project already has its own Bash guard hook | The kit's guard is skipped, so you don't get two competing guards. |
+| `.claude/skills` is a symlink | Respected: files are added inside the linked folder, following the same rules. |
+
+Each install is recorded in `.claude/agentic-kit/installed.json`: which components, which files, and the hash of each file.
+
+## Updating
+
+**The kit files in a project.** Re-run the one-liner with `--update`: it fetches the latest kit, then refreshes only the files you haven't edited.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yasinishyn/agentic-kit/main/get.sh | bash -s -- /path/to/your/project --update
+```
+
+- **Refreshed:** a kit file you haven't touched, i.e. one still identical to what the kit installed. The hashes are in `.claude/agentic-kit/installed.json`.
+- **Kept:** a file you edited. The run reports it, and you can compare it with the kit's version yourself.
+- **Added:** new files that appeared in the kit.
+
+**The kanban plugin** updates from GitHub:
+
+```bash
+claude plugin marketplace update agentic-kit
+```
+
+```bash
+claude plugin update kanban@agentic-kit
+```
+
+Then restart Claude Code.
+
+## The kanban plugin
+
+Claude Code installs plugins straight from GitHub, with no clone needed. Choosing `kanban` in the installer runs these for you:
+
+```bash
+claude plugin marketplace add yasinishyn/agentic-kit
+```
+
+```bash
+claude plugin install kanban@agentic-kit
+```
+
+### Finish in the project
+
+1. **Fill in the placeholders:** `grep -rn '<your ' CLAUDE.md .claude .SDD`.
+2. **Guard:** if you installed it, add project rules to the CONFIG block in `.claude/hooks/guard_bash.py`, then run `bash .claude/hooks/test_guard_bash.sh`.
+3. **Start Claude Code** in the project's root folder, or restart it. With the plugin, `/mcp` lists `plugin:kanban:kanban`.
+4. **Commit:** review the added files (`git status`) and commit them on a feature branch. The kit never pushes; you do.
 
 ## Components
 
@@ -161,7 +253,7 @@ becomes a ticket only when it produces a spec; the `ticket` skill (`/kanban:tick
 **Install it** (it's a per-user Claude Code plugin; this repository is its marketplace):
 
 ```bash
-claude plugin marketplace add <you>/agentic-kit     # or a local path: ~/agentic-kit
+claude plugin marketplace add yasinishyn/agentic-kit     # or a local path: ~/agentic-kit
 claude plugin install kanban@agentic-kit
 ```
 
@@ -171,7 +263,7 @@ or `./install.sh <project> --only kanban`, which runs the same two commands.
 
 ```json
 {
-  "extraKnownMarketplaces": { "agentic-kit": { "source": { "source": "github", "repo": "<you>/agentic-kit" } } },
+  "extraKnownMarketplaces": { "agentic-kit": { "source": { "source": "github", "repo": "yasinishyn/agentic-kit" } } },
   "enabledPlugins": { "kanban@agentic-kit": true }
 }
 ```
@@ -190,14 +282,15 @@ Delete the paths listed in `.claude/agentic-kit/installed.json`, and restore `.c
 
 ## For maintainers
 
-**Publish to GitHub** (the kit never pushes; these are your commands):
+The repository is `https://github.com/yasinishyn/agentic-kit`; `main` is what the one-liner installs.
 
-1. Create an **empty** repository named `agentic-kit` on github.com: no README, no licence, no .gitignore.
-2. Push:
-   ```bash
-   git -C ~/agentic-kit remote add origin https://github.com/<you>/agentic-kit.git
-   git -C ~/agentic-kit push -u origin main
-   ```
+**Release a version:** after testing, tag it and publish the tag, so people can pin it with `AGENTIC_KIT_REF=v0.2.0`:
+
+```bash
+git tag -a v0.2.0 -m "agentic-kit 0.2.0" && git push origin main v0.2.0
+```
+
+**Plugin changes:** bump `version` in `plugins/kanban/.claude-plugin/plugin.json`. Users run `claude plugin update`.
 
 **Tests:**
 
