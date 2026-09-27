@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # PreToolUse guard for Claude Code Bash calls (agent guardrails).
 # Fails CLOSED: any problem running the checker blocks the command (exit 2).
-# Policy: agents never push, deploy, publish, call cloud CLIs, touch non-local databases, or read credentials.
+# Policy: agents stage (git add) but never commit/push unless ALLOW_AGENT_COMMITS (then only as the developer),
+# and never deploy, publish, call cloud CLIs, touch non-local databases, or read credentials.
 # See .claude/hooks/README.md for the rule list, the project CONFIG block and the tests.
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

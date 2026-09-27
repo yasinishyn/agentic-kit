@@ -34,7 +34,7 @@ COMPONENTS = {
     "sdd": "SDD flow: the `sdd` skill + .SDD/ (process README, spec templates, specs/)",
     "skills": "Engineering skills: test-driven-development, systematic-debugging, verification-before-completion",
     "agents": "Review agents: architect, qa-verifier",
-    "guard": "Guardrails: guard hook (blocks push/deploy/aws/credential reads) + deny rules merged into .claude/settings.json",
+    "guard": "Guardrails: guard hook (blocks agent commit/push by default, deploy/aws/credential reads) + deny rules merged into .claude/settings.json",
     "instructions": "CLAUDE.md template + .claude/memory/ (long-term memory index)",
     "kanban": "Kanban plugin: board over .SDD/specs (tickets = spec folders, columns = ADLC stages) + MCP tools + `ticket` skill (claude CLI)",
 }

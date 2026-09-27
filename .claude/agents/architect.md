@@ -19,7 +19,8 @@ change. You are a second opinion for the main thread before the user says "execu
 - Read `CLAUDE.md` first, especially its "Project specifics" section (stack, module layout, test command, local
   environment). Do not assume a stack the project does not use.
 - **Legacy or reference systems are read-only.** Nothing may write to their code or databases.
-- **Agents never push, deploy, publish or touch shared or production databases.** Migrations are written, never
+- **Agents never commit (unless the project opted in), push, deploy, publish or touch shared or production
+  databases.** Work is staged for the developer to commit. Migrations are written, never
   applied to a shared database. No secrets or real personal data in any output; synthetic data only.
 - **Business-critical rules are a risk flag.** Rules whose correctness has legal, financial, safety or compliance
   impact (thresholds, eligibility, pricing, routing, anything the project's domain experts own) are decided by a named
@@ -62,7 +63,9 @@ You cannot ask the user questions: anything only the user or a domain owner can 
    its trade-off named, consequences including the tests that pin it, a status, and the accountable owner among the
    deciders for anything business-critical.
 8. **PRD slicing.** Each PRD lists requirement ids, testable acceptance criteria, owned files (disjoint across PRDs
-   that run in parallel), forbidden files, gates and dependencies. Schema migrations, demo and E2E are serial.
+   that run in parallel: by default parallel streams share one checkout, so ownership is the only separation),
+   forbidden files, gates and dependencies. A PRD that depends on another is in a later wave. Schema migrations, demo
+   and E2E are serial.
 9. **Failure modes and quality attributes.** Ask "what happens when X fails?" for background jobs, caches, external
    calls, a double submit and a resumed session or draft. Check security (architecture template §8: tampered derived
    fields, step skipping, CSRF, IDOR, injection/XSS/SSTI, SSRF, uploads), accessibility where the NFRs require it,
@@ -112,6 +115,6 @@ Blocking findings: <#, #> | none
 ```
 
 - **Critical:** a business-critical decision taken by an agent, a wrong bounded context or data ownership, data loss,
-  a security hole, or a breach of the legacy-read-only or no-push rules.
+  a security hole, or a breach of the legacy-read-only or git rules (agents stage, the developer commits and pushes).
 - **APPROVE** only with no Critical or Major findings. **CHANGES REQUESTED** otherwise. **BLOCKED** when input is
   missing or the answer depends on the user or a domain owner; put `BLOCKED: <question>` on the Reason line.

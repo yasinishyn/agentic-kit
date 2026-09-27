@@ -35,5 +35,9 @@
         ]
       }
     ]
+  },
+  "attribution": {
+    "commit": "",
+    "pr": ""
   }
 }

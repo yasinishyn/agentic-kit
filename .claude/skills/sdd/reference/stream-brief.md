@@ -11,10 +11,9 @@ seen the conversation**, so the brief must be self-contained. Fill every `<…>`
 
 | Field | Value |
 |---|---|
-| Main checkout (read-only for you) | <R> = /abs/path/to/repo |
-| Your worktree (all writes here) | <WT> = <R>/.claude/worktrees/<id>, OR "fresh isolation worktree: run `git rev-parse --show-toplevel` first; it must not equal <R>" |
-| Stream branch | <featureBranch>--<id> (rename with `git -C <WT> branch -m …` if isolation gave another name) |
-| Base | <featureBranch> @ <sha> |
+| Checkout (all writes here, owned files only) | <WT> = /abs/path/to/repo (shared with other streams; opt-in variant: your own worktree) |
+| Branch | <the developer's current branch> (don't change it; opt-in variant: <featureBranch>--<id>) |
+| Base | <branch> @ <sha> |
 | PRD | <WT>/.SDD/specs/<slug>/prd/PRD-NN-<title>.md |
 | ADRs | <WT>/.SDD/specs/<slug>/adr/ADR-NNN-….md, … |
 | Requirements | <SLUG>-FR-.., <SLUG>-NFR-.. |
@@ -32,7 +31,7 @@ seen the conversation**, so the brief must be self-contained. Fill every `<…>`
 
 ## Forbidden
 - Everything else, in particular: `.SDD/specs/<slug>/**` (orchestrator-owned: registers, OPEN-QUESTIONS, reports),
-  `migrations/` (unless listed above), hotspots owned by another PRD: <list>, the main checkout <R>, other worktrees.
+  `migrations/` (unless listed above), hotspots owned by another PRD: <list>, every file another stream owns.
 
 ## Interfaces you must honour
 <Signatures and contracts other streams depend on, e.g. `evaluate_rules(input, *, today) -> Result` fields; or "none".>
@@ -47,9 +46,10 @@ cd <WT> && <your test command> <paths>
 ```
 
 ## Report (your final message; JSON if a schema is given)
-status DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT · worktree · branch · headSha · commits (oneline) ·
-filesChanged (`git -C <WT> diff --name-only <featureBranch>...HEAD`) · testsAdded · testsSummary (verbatim test summary
-line) · blockers (exact questions) · notes (deviations, follow-ups).
+status DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT · filesChanged
+(`git -C <WT> status --porcelain --untracked-files=all -- <owned paths>`) · testsAdded · testsSummary (verbatim test
+summary line) · suggestedCommitMessage (`PRD-NN: <summary> (<FR ids>)`) · blockers (exact questions) · notes
+(deviations, follow-ups). Opt-in variant: also worktree · branch · headSha · commits (oneline).
 ````
 
 ---
@@ -59,7 +59,7 @@ line) · blockers (exact questions) · notes (deviations, follow-ups).
 1. **Stay in your lane.** Change only the owned files. If you need any other change, stop and report it as a blocker.
    Don't work around it.
 2. **Absolute paths everywhere.** Use `git -C <WT> …` and absolute paths; `cd` does not persist between Bash calls.
-   Never write under `<R>`.
+   Other streams write in the same checkout: never edit, revert, format or delete a file you don't own.
 3. **TDD.** Follow the `test-driven-development` skill: tests first; watch them fail for the right reason; minimal
    code; refactor only while green. Expected values are literals from the PRD or test vectors, never recomputed by the
    code under test.
@@ -70,8 +70,12 @@ line) · blockers (exact questions) · notes (deviations, follow-ups).
 6. **Local only.** Run gates against local resources. Never use shared, staging or production services, never read
    `.env` or cloud credentials. The guard hook blocks the obvious cases; don't rely on it.
 7. **Synthetic data only.**
-8. **Git.** Commit on your stream branch only, message `PRD-NN: <summary> (<FR ids>)`. Stage explicit paths. Never use
-   `git add -A`, `--force`, rebase or amend of the base, and never push. Leave nothing uncommitted.
+8. **Git: read-only.** `status`, `diff`, `log`, `show` only. Don't `git add` (the index is shared; the orchestrator
+   stages), and never commit, stash, checkout, switch, reset, branch or create worktrees; the guard hook blocks
+   commits. Propose the commit message in your report; the developer commits.
+   *Opt-in variant* (project set `ALLOW_AGENT_COMMITS`): commit your owned files, explicit paths, on your stream branch
+   in your own worktree, as the developer's git identity (no Claude/AI author or co-author trailer); never `git add -A`,
+   `--force`, rebase, amend or push. Leave nothing uncommitted.
 9. **Evidence.** The report quotes command output verbatim. "Should pass" or "probably" is not evidence.
 10. **No sub-orchestration.** Don't spawn further agents or workflows and don't ask the user questions. Return
     `BLOCKED` with the exact question instead.
@@ -87,8 +91,10 @@ line) · blockers (exact questions) · notes (deviations, follow-ups).
 
 ## Orchestrator checklist before sending a brief
 
-- [ ] The PRD is approved, `Parallelisable: Yes`, and its dependencies are merged into `<featureBranch>`.
-- [ ] The spec folder and `.claude/` are committed at `<sha>`, and the worktree was created from that commit.
+- [ ] The PRD is approved, `Parallelisable: Yes`, and its dependencies are done (earlier wave, gates green).
+- [ ] None of its owned files is dirty before the wave (`git status --porcelain --untracked-files=all -- <owned>`).
+- [ ] Opt-in variant only: the spec folder and `.claude/` are committed at `<sha>`, and the worktree was created from
+      that commit.
 - [ ] Owned files are disjoint from every other stream in this wave (matrix in [parallel-work.md](parallel-work.md)).
 - [ ] Stream resources are provisioned, and gate commands carry this stream's values (`{WT}` placeholders are allowed
       in `streams.workflow.js` gates).

@@ -32,9 +32,10 @@ If you haven't completed Phase 1, you cannot propose fixes.
   into fixtures. "Bugs in production" are reproduced locally.
 - **Never log, print or paste personal data**: names, contact details, identifiers, free text entered by users,
   uploaded files. Instrument with keys, types, lengths, counts, booleans, status codes and synthetic record IDs. This
-  applies to logs, test output, reports, screenshots and commit messages.
+  applies to logs, test output, reports, screenshots and suggested commit messages.
 - **Secrets:** check presence only (`${VAR:+SET}`); never print values, never read `.env` or cloud credentials.
-- Prefix temporary instrumentation with `DBG` and remove it before committing (`git diff | grep DBG` must be empty).
+- Prefix temporary instrumentation with `DBG` and remove it before staging or handing off (`git diff HEAD | grep DBG`
+  must be empty).
 - **Business rules are not yours to change.** If the root cause is a threshold, pricing, eligibility, routing or
   regulated-wording rule, stop: record it as an open question in the spec's `OPEN-QUESTIONS.md` for the domain owner.
   In a subagent, return `BLOCKED: <question>` with your evidence.

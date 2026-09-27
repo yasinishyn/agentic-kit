@@ -52,6 +52,6 @@ Claude Code shows them as `mcp__plugin_kanban_kanban__<tool>`; load them with To
 **Who updates:** the main session, at stage boundaries. Subagents don't have to.
 
 ## Rules
-- **Content:** titles and notes are factual and neutral. No secrets, credentials, personal data or chat transcripts; the files are committed with the code.
+- **Content:** titles and notes are factual and neutral. No secrets, credentials, personal data or chat transcripts; the developer commits the files with the code.
 - **Scope:** don't create tickets for one-off questions. A ticket exists when work produces a specification (see the `ticket` skill).
 - **Failures:** if the tools fail, keep working, edit the markdown directly, and mention it once.

@@ -33,4 +33,6 @@ updated: <YYYY-MM-DD>
 ```
 
 ## Deliverable
-Commits on the stream branch + short report: files changed, tests added/passing (verbatim counts), open issues.
+The owned files changed, left staged/uncommitted for the developer (or committed as the developer on the stream branch,
+if the project opted in to agent commits), plus a short report: files changed, tests added/passing (verbatim counts),
+the suggested commit message `PRD-NN: <summary> (<SLUG>-FR-..)`, open issues.

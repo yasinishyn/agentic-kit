@@ -8,9 +8,13 @@
 - Tests: `<your test command>` · E2E: `<your e2e command>` · Seed data: <your seed data>
 
 ## Hard rules (enforced by .claude/settings.json + .claude/hooks/guard-bash.sh)
-1. Never push, deploy or publish; humans push. Finish work with a hand-off note (.SDD/templates/handoff-note.md).
+1. Never push, deploy or publish; the developer commits and pushes. Finish work with a hand-off note
+   (.SDD/templates/handoff-note.md).
 2. Never touch shared or production databases; local environment only. Synthetic data only; never print secrets.
-3. Commit only when the user has asked for execution, and only on feature branches.
+3. Git: stage with `git add -- <paths>` and read git; never commit, push, merge, rebase, create branches or worktrees.
+   The developer commits: end each stage with the "Git — for the developer" block (commands + suggested messages).
+   Only if the project sets ALLOW_AGENT_COMMITS in .claude/hooks/guard_bash.py may agents commit (and push when the
+   user asks), and then only as the developer's own git identity (no Claude/AI author or co-author trailer).
 4. The repo holds only code, code tooling and SDD artefacts; messages, briefs and Q&A stay in chat.
 5. If the guard hook blocks a command, tell the user; never work around it.
 

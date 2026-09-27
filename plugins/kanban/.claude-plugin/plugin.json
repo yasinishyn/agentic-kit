@@ -1,7 +1,7 @@
 {
   "name": "kanban",
   "displayName": "Kanban",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A kanban board over your .SDD/specs markdown: tickets are spec folders, columns are the ADLC stages, status lives in frontmatter. MCP tools for Claude and a local web board.",
   "author": { "name": "agentic-kit" }
 }

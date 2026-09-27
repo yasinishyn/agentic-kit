@@ -1,6 +1,6 @@
 # <Feature> — QA report
 
-| Run | Date | Branch/commit |
+| Run | Date | Branch · base commit · staged/uncommitted |
 |---|---|---|
 
 ## 1. Test results (verbatim counts)

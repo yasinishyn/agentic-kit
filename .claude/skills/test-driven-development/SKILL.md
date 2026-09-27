@@ -1,6 +1,6 @@
 ---
 name: test-driven-development
-description: Use when implementing any feature, bugfix, refactor or PRD slice, before writing implementation code, and whenever you write or change tests (then also load writing-good-tests.md). Enforces red-green-refactor - a failing test first, watched failing, minimal code, full suite green - with commits only on your own branch and never a push.
+description: Use when implementing any feature, bugfix, refactor or PRD slice, before writing implementation code, and whenever you write or change tests (then also load writing-good-tests.md). Enforces red-green-refactor - a failing test first, watched failing, minimal code, full suite green - staging only owned files for the developer to commit (unless the project opted in) and never a push.
 ---
 
 <!-- kit patch: provenance note; description sharpened (upstream: "Use when implementing any feature or bugfix, before writing implementation code") -->
@@ -53,8 +53,8 @@ Write code before the test? Delete it. Start over.
 - Delete means delete
 
 <!-- kit patch: scope of "delete" -->
-"Delete" means code **you** wrote in this cycle on **your own** branch. Never delete other people's or other
-streams' code, and never touch read-only reference code.
+"Delete" means code **you** wrote in this cycle, in files you own. Never delete other people's or other streams'
+code, and never touch read-only reference code.
 <!-- /kit patch -->
 
 Implement fresh from tests. Period.
@@ -217,16 +217,20 @@ Keep tests green. Don't add behavior.
 
 Next failing test for next feature.
 
-<!-- kit patch: commit policy -->
-### Commits
+<!-- kit patch: git policy (stage, the developer commits) -->
+### Checkpoints: stage, the developer commits
 
-- Commit at green checkpoints **only on your own branch**: the stream branch or worktree named in your brief, or the
-  feature branch the user named. Never commit to the default branch or another stream's branch.
-- Stage only files your PRD owns; `git diff --name-only` must be a subset of the PRD's "Owned files".
-- **Never push, merge into a shared branch, open a PR or run deploy scripts.** The guard hook
-  (`.claude/hooks/guard-bash.sh`) blocks them; a human pushes from the hand-off note
+- At a green checkpoint, **stage with `git add -- <owned paths>`; the developer commits.** Never `git add -A`. In a
+  parallel stream, don't stage at all: the orchestrator does (the index is shared).
+- Scope: `git status --porcelain --untracked-files=all` (minus paths that were dirty before you started) must be a
+  subset of the PRD's "Owned files".
+- Propose the commit message (`PRD-NN: <summary> (<FR ids>)`) in your report or the "Git — for the developer" block
   (`.SDD/templates/handoff-note.md`).
-- Commit only green. Record RED evidence (the failing line, verbatim) in your report instead of committing red.
+- Stage only green. Record RED evidence (the failing line, verbatim) in your report instead.
+- **Never commit, push, merge, open a PR or run deploy scripts**, and never create branches or worktrees. The guard
+  hook (`.claude/hooks/guard-bash.sh`) blocks commits and pushes.
+- *Opt-in* (the project set `ALLOW_AGENT_COMMITS`): commit green checkpoints on the branch your brief names, as the
+  developer's git identity (no Claude/AI author or co-author trailer); still never push unless the user asks.
 <!-- /kit patch -->
 
 ## Good Tests
@@ -330,7 +334,7 @@ Before marking work complete:
 <!-- kit patch: extra checklist items -->
 - [ ] Full suite green; final count line quoted verbatim
 - [ ] Business-critical expected values come from the approved spec or its test vectors, with the source cited
-- [ ] Synthetic data only; commits on your own branch; nothing pushed
+- [ ] Synthetic data only; only owned files changed and staged; nothing committed (unless opted in) or pushed
 <!-- /kit patch -->
 
 Can't check all boxes? You skipped TDD. Start over.

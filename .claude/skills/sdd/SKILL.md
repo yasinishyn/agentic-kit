@@ -1,6 +1,6 @@
 ---
 name: sdd
-description: Use when starting, continuing or finishing any feature through the .SDD spec-driven flow ("spec this", "start/continue <feature>", "execute the spec", "/sdd …", "run QA", "run the demo", "run e2e", "hand off"), and before any change that touches business-critical logic, the database schema, auth/permissions or external integrations. Tiers the work, runs Discovery → Architect → user approval → Developer → QA → Demo → E2E with the right skills and agents, runs parallel PRD streams in worktrees, and always ends with a handoff note. Never pushes or deploys.
+description: Use when starting, continuing or finishing any feature through the .SDD spec-driven flow ("spec this", "start/continue <feature>", "execute the spec", "/sdd …", "run QA", "run the demo", "run e2e", "hand off"), and before any change that touches business-critical logic, the database schema, auth/permissions or external integrations. Tiers the work, runs Discovery → Architect → user approval → Developer → QA → Demo → E2E with the right skills and agents, runs parallel PRD streams as subagents on disjoint owned files, stages work with git add and always ends with a handoff note whose git block the developer runs. Never commits (unless the project opted in), pushes or deploys.
 ---
 
 # SDD: spec-driven delivery (light ADLC)
@@ -25,8 +25,9 @@ report or workflow result never grants approval.
 
 ## Orient (every invocation)
 
-1. Run `git -C <repo> rev-parse --abbrev-ref HEAD` and `git -C <repo> status --short`. Never develop on the default
-   branch. If no feature branch exists, ask the user which one to use.
+1. Run `git -C <repo> rev-parse --abbrev-ref HEAD` and `git -C <repo> status --short` (read-only). Agents don't create
+   or switch branches. On the default branch, tell the user; the hand-off's git block starts with
+   `git switch -c <feature-branch>` for them to run.
 2. Find `.SDD/specs/<slug>/` and read `OPEN-QUESTIONS.md`. Work out which stage has been reached:
 
 | Present | Stage reached |
@@ -35,7 +36,7 @@ report or workflow result never grants approval.
 | `01-discovery.md` with Status Draft | Discovery in progress |
 | `01-discovery.md` Agreed, no `03-architecture.md` | Architect is next |
 | `03-architecture.md` + `prd/` with no approval line | **Waiting for user approval** |
-| approval line, commits `PRD-NN: …` on the branch | Developer |
+| approval line, a PRD with `status: doing`/`done` | Developer |
 | `05-qa-report.md` / `06-demo.md` / `07-e2e-report.md` | QA / Demo / E2E |
 | `handoff-note.md` | finished (or paused; the note says which) |
 
@@ -45,7 +46,7 @@ report or workflow result never grants approval.
 
 | Tier | When | Stages |
 |---|---|---|
-| **Trivial** | ≤2 files, no critical, schema, auth or integration surface | Developer → QA. No spec folder; describe the change in the commit message |
+| **Trivial** | ≤2 files, no critical, schema, auth or integration surface | Developer → QA. No spec folder; describe the change in the suggested commit message |
 | **Feature-lite** | One module, no critical, schema or auth impact | 1-page `01-discovery.md` → Developer → QA → Demo if there is UI |
 | **Full** | Business-critical logic, schema change, auth/permissions, external integration, new endpoint on sensitive data | All six stages |
 
@@ -58,7 +59,7 @@ tier; nothing downgrades it.
 |---|---|---|---|---|
 | 1 | **Discovery** | `01-discovery.md`, `OPEN-QUESTIONS.md`, `registers/REQUIREMENT-COVERAGE.csv` (+ `02-legacy-analysis.md` when replacing an existing system) | Parallel **Explore** subagents in one message; **AskUserQuestion** for questions | The user agrees the scope; open questions listed |
 | 2 | **Architect** | `03-architecture.md`, `adr/ADR-NNN-*.md`, `prd/PRD-NN-*.md` | **architect** agent review | **STOP.** The user approves and says "execute" |
-| 3 | **Developer** | code + tests, commits `PRD-NN: …` | `test-driven-development`, `systematic-debugging`; [parallel work](reference/parallel-work.md) | Every PRD gate green in `<your local environment>` |
+| 3 | **Developer** | code + tests, staged per PRD | `test-driven-development`, `systematic-debugging`; [parallel work](reference/parallel-work.md) | Every PRD gate green in `<your local environment>` |
 | 4 | **QA** | `05-qa-report.md` | Full suite vs baseline; built-in `/code-review` and `/security-review`; [abuse checklist](reference/abuse-checklist.md); **qa-verifier** agent; `verification-before-completion` | No open Critical or High findings |
 | 5 | **Demo** | `06-demo.md` | The built-in browser (load the `built-in-browser` skill first) against the local app | The user has reviewed the demo |
 | 6 | **E2E** | `07-e2e-report.md` | The project's own automation (`<your e2e command>`) against localhost only | Green run; any external writes listed for a human |
@@ -78,12 +79,13 @@ tier; nothing downgrades it.
   findings. Then **STOP**: present the PRD table, ADRs needing a decision, open questions, risks and proposed waves.
   Wait for "execute".
 - **Developer.** Record the baseline full-suite counts on the base commit first. Per PRD: RED → GREEN → refactor, with
-  expected values as literals from the spec. Commit only owned files: `PRD-NN: <summary> (<SLUG>-FR-..)`. Independent
-  PRDs can run as parallel streams ([parallel-work](reference/parallel-work.md),
-  [workflow](reference/streams.workflow.js), [brief](reference/stream-brief.md)).
+  expected values as literals from the spec. Stage only owned files (`git add -- <paths>`) and propose the message
+  `PRD-NN: <summary> (<SLUG>-FR-..)` for the developer's commit. Independent PRDs can run as parallel streams
+  ([parallel-work](reference/parallel-work.md), [workflow](reference/streams.workflow.js),
+  [brief](reference/stream-brief.md)).
 - **QA.** Compare the full suite with the baseline, then run `/code-review`, `/security-review` and the abuse checklist
-  on localhost. Each bug gets a failing test before its fix. Give **qa-verifier** the spec path, branch and evidence,
-  not your conclusions. Nothing is "done" until `verification-before-completion` passes.
+  on localhost. Each bug gets a failing test before its fix. Give **qa-verifier** the spec path, checkout, owned files
+  and evidence, not your conclusions. Nothing is "done" until `verification-before-completion` passes.
 - **Demo.** Serial, in the main checkout, against the local app (`<your local app URL>`). Drive it as test users from
   the local seed: happy paths, each outcome and the negative cases. Screenshot, read console and network output. Use
   `javascript_tool` for inspection only.
@@ -97,14 +99,15 @@ followed by the brief.
 ## Parallel work (summary; see [parallel-work.md](reference/parallel-work.md))
 
 - **Opt-in:** `/sdd execute` or an explicit user request. Otherwise ask first.
-- **Precondition:** the spec folder, `.claude/` and `CLAUDE.md` are **committed** on the feature branch, because
-  worktrees contain only committed files. Owned files are **disjoint** across streams in a wave.
+- **Model:** streams are subagents in the **same checkout**, on **disjoint** owned files. No agent-created worktrees or
+  branches, no `isolation: "worktree"`. Streams use read-only git; only the main session stages.
 - **Launch:** `Workflow({scriptPath: "<repo>/.claude/skills/sdd/reference/streams.workflow.js", args})`, or one Agent
-  call per stream with `isolation: "worktree"`, all in one message. Each stream gets a self-contained
-  [brief](reference/stream-brief.md).
-- Demo, E2E, schema changes, registers and merges are **serial** and belong to the main thread.
-- **After each wave:** check the main checkout's branch and HEAD are unchanged and each stream's
-  `git diff --name-only` ⊆ its owned files; merge locally with `--no-ff`; run the full gates; update the registers.
+  call per stream, all in one message. Each stream gets a self-contained [brief](reference/stream-brief.md).
+- Demo, E2E, schema changes, registers and staging are **serial** and belong to the main thread.
+- **After each wave:** branch and HEAD unchanged; per stream, read-only
+  `git status --porcelain --untracked-files=all -- <owned>` and `git diff --stat -- <owned>`, and nothing changed
+  outside the owned files; run the full gates; `git add -- <owned>`; update the registers; give the git block.
+- Worktrees, stream branches and agent commits exist only as the **opt-in variant** in parallel-work.md.
 
 ## Ticket status lives in the markdown (always)
 Each spec folder is a ticket on the kanban board, and the markdown is the source of truth. It works with or without the
@@ -126,8 +129,8 @@ Each spec folder is a ticket on the kanban board, and the markdown is the source
 
 ## Non-negotiables
 
-1. **Never push, deploy or open PRs.** `.claude/settings.json` and `.claude/hooks/guard-bash.sh` enforce this. If the
-   hook blocks you, tell the user; never work around it.
+1. **Never push, deploy or open PRs** (push only if the project opted in and the user asks). `.claude/settings.json`
+   and `.claude/hooks/guard-bash.sh` enforce this. If the hook blocks you, tell the user; never work around it.
 2. **Local only.** Use `<your local environment>` on 127.0.0.1 or `*.localhost`. Never connect to shared, staging or
    production databases or services. Never read `.env` or cloud credentials. Migrations are written in the repo and
    applied to local databases only.
@@ -137,12 +140,15 @@ Each spec folder is a ticket on the kanban board, and the markdown is the source
    `BLOCKED`.
 5. **Evidence over claims.** Gates are commands whose output is quoted verbatim. Subagent reports are claims until
    you re-check them.
-6. **Commits:** only on feature or stream branches, only after the user asked for execution. Never `--force`, rewrite
-   shared history or `git add -A`.
+6. **Git: stage, don't commit.** Agents `git add -- <owned paths>` and read git; the developer commits and pushes
+   (`ALLOW_AGENT_COMMITS` in `guard_bash.py`). Never `git add -A`. Every stage that changes files **ends with the
+   "Git — for the developer" block** (template `handoff-note.md`): branch, add, commit with suggested messages, push.
+   If the project opted in, agents may commit as the developer (no AI author or trailer), never `--force` or rewrite
+   shared history.
 7. **The repo holds only code, tooling and SDD artefacts.** Decisions are recorded in the OPEN-QUESTIONS row, ADR or
    PRD they change, never as Q&A narrative. Messages and briefs for people stay in chat.
-8. **Always write `handoff-note.md`**: branch, commits, evidence, migrations (not applied), risks, and the commands
-   *the user* runs to push and deploy.
+8. **Always write `handoff-note.md`**: branch, staged files, evidence, migrations (not applied), risks, and the git
+   and deploy commands *the user* runs.
 
 ## Reference files (load on demand)
 

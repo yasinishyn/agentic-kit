@@ -1,8 +1,9 @@
 # .SDD — Spec-Driven Delivery (light ADLC)
 
 Every non-trivial feature gets a folder in `.SDD/specs/<slug>/`. The spec is versioned **with the code it
-produces** and pushed together by a human. Agents never push, deploy, or apply migrations to shared databases
-(see `CLAUDE.md` and `.claude/settings.json`).
+produces**, committed and pushed together by the developer. By default agents only stage (`git add`); they never
+commit, push, deploy, or apply migrations to shared databases (see `CLAUDE.md`, `.claude/settings.json` and
+`.claude/hooks/README.md`; a project can opt in to agent commits made as the developer).
 
 Skill: `sdd` (`.claude/skills/sdd/`) runs these stages. Templates live in `.SDD/templates/`.
 
@@ -12,29 +13,30 @@ Skill: `sdd` (`.claude/skills/sdd/`) runs these stages. Templates live in `.SDD/
 |---|---|---|---|
 | 1 | **Discovery** | user request → `01-discovery.md` (neutral goal, scope in/out, FR/NFR, assumptions) + `OPEN-QUESTIONS.md` register. Replacing an existing system → also `02-legacy-analysis.md` | Open questions listed; scope agreed |
 | 2 | **Architect** | → `03-architecture.md` (DDD: bounded context, domain model, integration points, reuse map), `adr/ADR-NNN-*.md`, `prd/PRD-NN-*.md` (implementable slices with acceptance criteria, test list, owned files, dependencies) | **User approves the spec and says "execute".** Nothing below starts without it |
-| 3 | **Developer** | PRDs → code + unit/integration tests (TDD). Independent PRDs may run in parallel (see "Parallel work") | PRD gates green in `<your local environment>` |
+| 3 | **Developer** | PRDs → code + unit/integration tests (TDD), staged per PRD. Independent PRDs may run in parallel (see "Parallel work") | PRD gates green in `<your local environment>` |
 | 4 | **QA** | tests → bugs → fixes → `05-qa-report.md` (full test suite, `/code-review`, `/security-review` + localhost abuse checklist, independent `qa-verifier` agent) | No open Critical/High findings |
 | 5 | **Demo** | Claude drives the running app in the built-in browser as seeded test users → `06-demo.md` with screenshots | User reviews the demo |
 | 6 | **E2E** | The project's own automation (`<your e2e command>`) against localhost → `07-e2e-report.md` | Green run; any external writes done by a human |
 
-Finish with `handoff-note.md`: branch, commits, test evidence, residual risks, and the exact commands **the user**
-runs to push.
+Every stage that changes files ends with a **"Git — for the developer"** block: the branch, add, commit (with
+suggested messages) and push commands **the developer** runs. Finish with `handoff-note.md`: branch, staged work,
+test evidence, residual risks, and that git block.
 
 ## Tiering — keep it light
 
 | Change | Stages |
 |---|---|
-| Trivial (≤2 files, no critical/schema/auth/integration surface) | Developer → QA (no spec folder needed; note it in the commit message) |
+| Trivial (≤2 files, no critical/schema/auth/integration surface) | Developer → QA (no spec folder needed; note it in the suggested commit message) |
 | Feature-lite (one module, no critical/schema/auth impact) | 1-page `01-discovery.md` → Developer → QA → Demo if UI |
 | **Business-critical logic, system replacement, migration, auth/permissions, external integration** | All six stages |
 
 ## Parallel work (built-in Claude Code capabilities only)
 
-- **Precondition:** the spec folder, `.claude/` and `CLAUDE.md` are **committed** on the feature branch (worktrees contain only committed files).
-- Launch independent PRDs with the built-in **Workflow** tool (`agent(brief, {isolation: 'worktree'})`) or the **Agent** tool.
-- Each brief is self-contained: PRD path, owned files (disjoint across streams), forbidden files, gates, and **absolute paths in every command** (Bash working directory resets between calls).
-- Demo, E2E and database-schema changes run **serially in the main checkout**. Per-stream ports/DBs come from `<your local environment>`.
-- After each wave: check each stream's `git diff --name-only` ⊆ its owned files, merge locally, run full gates.
+- Independent PRDs run as **subagents in the same checkout** (built-in **Workflow** tool with the `sdd` skill's `streams.workflow.js`, or the **Agent** tool), each writing only its **owned files** (disjoint across streams). No agent-created worktrees or branches.
+- Each brief is self-contained: PRD path, owned files, forbidden files, gates, and **absolute paths in every command** (Bash working directory resets between calls).
+- Streams use read-only git; the main session stages. Demo, E2E and database-schema changes run **serially**. Per-stream ports/DBs come from `<your local environment>`.
+- After each wave: read-only `git status --porcelain --untracked-files=all -- <owned>` and `git diff --stat -- <owned>` per stream, nothing changed outside the owned files, full gates, then `git add -- <owned>` and the git block.
+- Projects that opted in to agent commits may use worktrees and stream branches instead (the skill's `parallel-work.md`, "Opt-in variant").
 
 ## Folder layout per spec
 

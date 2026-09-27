@@ -9,7 +9,9 @@ bypassed with `git -C x push`, `bash -c "…"` etc.; the hook parses the command
 ## What it blocks (humans do these, never agents)
 | Rule | Examples |
 |---|---|
-| Any `git push` | `git push`, `git -C dir push`, `bash -c 'git push'`, `eval git push` |
+| Commit-creating git, by default (see "Git policy") | `git commit`, `git push`, `git merge`, `git rebase`, `git cherry-pick`, `git revert`, `git am`, `git pull`, in any form: `git -C dir push`, `bash -c 'git commit …'`, `eval git push` |
+| Changing the git identity (always) | `git config user.name …`, `git config --global user.email …` |
+| A Claude/AI author, committer or co-author (always, also when commits are allowed) | `--author='Claude <…>'`, `GIT_AUTHOR_NAME=Claude`, a `Co-Authored-By: Claude` trailer, `noreply@anthropic.com` |
 | Anything under a `deploy/` directory | `./deploy/release.sh`, `bash deploy/*.sh`, `python deploy/x.py` |
 | The `aws` CLI | `aws s3 ls`, `AWS_PROFILE=x aws secretsmanager …` (use a local emulator in <your local environment>) |
 | GitHub PR/release/repo writes | `gh pr create`, `gh pr merge`, `gh release create` |
@@ -27,12 +29,46 @@ All lists are empty by default and additive (they can only block more):
 | `DB_WRITING_SCRIPTS` | seed/load/migrate scripts that read `DATABASE_URL` from `.env` (blocked on the host unless an inline local URL is given) |
 | `EXTRA_SECRET_PATHS` | extra secret files (`secrets/`, `*.pem`, …) |
 
+## Git policy: `ALLOW_AGENT_COMMITS`
+
+`ALLOW_AGENT_COMMITS` in the CONFIG block of `guard_bash.py` (function `git_reason`) sets who commits.
+
+| | `False` (default) | `True` (opt-in) |
+|---|---|---|
+| `git add`, read-only git (`status`, `diff`, `log`, `show`, `rev-parse`) | allowed | allowed |
+| `commit`, `push`, `merge`, `rebase`, `cherry-pick`, `revert`, `am`, `pull` | **blocked**: the developer runs them from the hand-off's "Git — for the developer" block | allowed, as the developer's own identity |
+| Claude/AI author, committer or `Co-Authored-By` trailer | blocked | **blocked** |
+| `git config user.name` / `user.email` | blocked | **blocked** |
+
+**To opt in** (a team decision; have a human review the diff):
+1. Set `ALLOW_AGENT_COMMITS: bool = True` in `guard_bash.py`.
+2. Remove `"Bash(git push *)"` from `permissions.deny` in `.claude/settings.json` (it is a prefix rule the hook cannot
+   override). Keep `"attribution": {"commit": "", "pr": ""}` there, so Claude Code adds no Claude trailer or PR line.
+3. Make sure each developer's own `user.name`/`user.email` is configured; commits are made under it.
+4. Update `test_guard_bash.sh` (below) and run it.
+
+Deploy scripts, the `aws` CLI, `gh pr create/merge` and the other rules stay blocked either way.
+
 Known, intentional false positive: a heredoc whose *text* contains a blocked command (e.g. writing a doc that shows
 `git push`) is blocked. Use the Write tool to create such files.
 
 ## Tests
 ```bash
 bash .claude/hooks/test_guard_bash.sh   # must print failed=0
+```
+The git cases (the `git push` rows at the top and the `# --- git: stage yes, commit/push no …` block) assume the
+default (`ALLOW_AGENT_COMMITS = False`). After opting in, change the expected code of every commit/push/merge/pull case
+from `2` to `0`, keep the identity case at `2`, and add cases such as:
+```bash
+check 0 "commit as the developer"   "git commit -m 'PRD-01: add rules (X-FR-01)'"
+check 2 "Claude co-author trailer"  "git commit -m x -m 'Co-Authored-By: Claude <noreply@anthropic.com>'"
+check 2 "Claude author"             "git commit --author='Claude <noreply@anthropic.com>' -m x"
+check 2 "AI identity via env"       "GIT_AUTHOR_NAME=Claude git commit -m x"
+check 2 "change git identity"       "git config user.name 'Claude'"
+```
+To probe a single command by hand (exit 0 = allowed, 2 = blocked; the reason is printed on stderr):
+```bash
+printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git status"}}' | .claude/hooks/guard-bash.sh; echo "exit=$?"
 ```
 
 ## Changing the policy

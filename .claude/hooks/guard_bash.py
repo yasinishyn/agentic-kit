@@ -5,7 +5,10 @@ Reads the hook JSON from stdin. Exit 0 = allow, exit 2 = block (reason on stderr
 Any unexpected error exits 2 via guard-bash.sh (fail-closed).
 
 Always blocked (humans do these, never agents):
-  * git push in any form (incl. `git -C dir push`, inside `bash -c`, via `eval`)
+  * git commit/push and other commit-creating commands (merge, rebase, cherry-pick, revert, am, pull), in any form
+    (incl. `git -C dir ...`, inside `bash -c`, via `eval`), unless ALLOW_AGENT_COMMITS is True below. `git add` and
+    read-only git are always allowed. Even when commits are allowed, a Claude/AI author, committer or co-author
+    trailer, and changing git user.name/user.email, are blocked: commits are made as the developer.
   * GitHub PR/release/repo writes: gh pr create/merge, gh release create, ...
   * the `aws` CLI
   * running anything under a deploy/ directory (./deploy/x.sh, bash deploy/x.sh, python deploy/x.py)
@@ -60,6 +63,12 @@ EXTRA_SECRET_PATHS: list[str] = [
     # r"(^|/)deploy/\.env", r"(^|/)secrets/", r"\.pem$",
 ]
 
+# Agents may always `git add` (stage) and read git. Committing and pushing is the developer's job by default.
+# Set to True only if your team wants agents to commit/push; they then commit as the developer's own git identity
+# (no Claude/AI author, committer or co-author trailer). Also remove "Bash(git push *)" from the deny list in
+# .claude/settings.json, and keep "attribution": {"commit": "", "pr": ""} there so Claude Code adds no trailer.
+ALLOW_AGENT_COMMITS: bool = False
+
 # ===================================== END CONFIG =====================================
 
 BASE_LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
@@ -74,7 +83,17 @@ DB_CLIENTS = {"psql", "pg_dump", "pg_restore", "pg_dumpall", "createdb", "dropdb
 BASE_SECRET_PATH_RE = r"(^|/|~)\.aws(/|$)|(^|/|~)\.ssh(/|$)|(^|/)\.env(\.[\w.-]+)?$"
 SAFE_ENV_EXAMPLE_RE = re.compile(r"(^|/)\.env\.(example|template|sample|dist)$")
 DEPLOY_RE = re.compile(r"(^|/)deploy/\S+")
-GIT_PUSH_RE = re.compile(r"\bgit\b(\s+(-C|-c|--git-dir|--work-tree)\s*=?\s*\S+|\s+--?[\w-]+(=\S+)?)*\s+push\b")
+GIT_CMD_RE = re.compile(
+    r"\bgit\b((?:\s+(?:-C|-c|--git-dir|--work-tree|--namespace)\s*=?\s*\S+|\s+--?[\w-]+(?:=\S+)?)*)"
+    r"\s+([a-z][\w-]*)([^;&|\n)]*)"
+)
+GIT_COMMIT_OPS = {"commit", "commit-tree", "merge", "rebase", "cherry-pick", "revert", "am", "pull", "push"}
+AI_IDENTITY_RE = re.compile(
+    r"(--author[= ]\S*|GIT_(AUTHOR|COMMITTER)_(NAME|EMAIL)=\S*|user\.(name|email)=\S*)[^;&|\n]*?(claude|anthropic)"
+    r"|co-authored-by:[^\n]*(claude|anthropic)|noreply@anthropic\.com|generated with \[?claude code",
+    re.IGNORECASE,
+)
+IDENTITY_CHANGE_RE = re.compile(r"\bgit\b[^;&|\n]*\bconfig\b[^;&|\n]*\buser\.(name|email)\s+\S", re.IGNORECASE)
 URL_HOST_RE = re.compile(r"(?:postgres(?:ql)?|mysql|mariadb)://(?:[^@/\s]*@)?\[?([^:/?\s\]]+)")
 SPLIT_RE = re.compile(r"\|\||&&|;|\||\n|&(?!&)")
 
@@ -86,7 +105,7 @@ def _any(patterns: list[str]) -> re.Pattern[str] | None:
 def block(reason: str) -> None:
     sys.stderr.write(
         f"BLOCKED by agent guard: {reason}\n"
-        "Policy: agents never push, deploy, publish, call cloud CLIs, touch non-local databases or read "
+        "Policy: agents never commit/push (unless the project opts in), deploy, publish, call cloud CLIs, touch non-local databases or read "
         "credentials. Ask the user to run it themselves if it is genuinely needed.\n"
     )
     sys.exit(2)
@@ -228,9 +247,25 @@ def check_db_hosts(args: list[str]) -> None:
             block(f"database clients may only target local hosts (got {h}).")
 
 
+def git_reason(command: str) -> str | None:
+    """Commit-creating git commands are blocked unless ALLOW_AGENT_COMMITS; AI identities are always blocked."""
+    if IDENTITY_CHANGE_RE.search(command):
+        return "changing git user.name/user.email is not allowed: commits are made as the developer."
+    ops = {m.group(2) for m in GIT_CMD_RE.finditer(command)} & GIT_COMMIT_OPS
+    if not ops:
+        return None
+    if not ALLOW_AGENT_COMMITS:
+        return (f"`git {sorted(ops)[0]}` is the developer's job (agents may `git add` and read git). "
+                "Give the user the command instead, or set ALLOW_AGENT_COMMITS in .claude/hooks/guard_bash.py.")
+    if AI_IDENTITY_RE.search(command):
+        return "commits must use the developer's own git identity: no Claude/AI author, committer or co-author trailer."
+    return None
+
+
 def check_command(command: str, depth: int = 0) -> None:
-    if GIT_PUSH_RE.search(command):
-        block("git push is human-only.")
+    reason = git_reason(command)
+    if reason:
+        block(reason)
     forbidden_env = _any(FORBIDDEN_ENV_VARS)
     if forbidden_env and re.search(rf"(^|[\s;&|(])(export\s+)?(?:{forbidden_env.pattern})=", command):
         block("setting this environment variable is not allowed for agents (guard CONFIG: FORBIDDEN_ENV_VARS).")

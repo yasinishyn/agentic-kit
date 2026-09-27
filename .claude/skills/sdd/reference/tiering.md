@@ -24,7 +24,7 @@ table per feature.
 
 | Tier | Spec folder | Stages | Minimum evidence |
 |---|---|---|---|
-| Trivial | none | Developer → QA | Relevant tests + full suite (verbatim counts) in the commit message or the reply; `/code-review` on the diff |
+| Trivial | none | Developer → QA | Relevant tests + full suite (verbatim counts) in the reply; changed files staged and a suggested commit message; `/code-review` on the diff |
 | Feature-lite | `01-discovery.md` (1 page), `handoff-note.md` | Discovery-lite → Developer → QA → Demo if UI | Short `05-qa-report.md`; `06-demo.md` if UI; abuse-checklist rows for any new route |
 | Full | Everything in `.SDD/README.md` (layout) | All six + handoff | Every report; register complete; ADRs signed by the named deciders |
 

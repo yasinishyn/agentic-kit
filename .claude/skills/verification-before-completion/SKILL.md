@@ -1,6 +1,6 @@
 ---
 name: verification-before-completion
-description: Use when about to claim work is complete, fixed or passing - before committing, handing off a PRD or stream, filling a QA, demo, E2E or hand-off report, moving to the next SDD stage, or relaying a subagent's success. Requires running the proving command fresh (the test suite, git diff against owned files, a browser check for UI) and quoting its output; evidence before assertions, always.
+description: Use when about to claim work is complete, fixed or passing - before staging work for the developer's commit, handing off a PRD or stream, filling a QA, demo, E2E or hand-off report, moving to the next SDD stage, or relaying a subagent's success. Requires running the proving command fresh (the test suite, git diff against owned files, a browser check for UI) and quoting its output; evidence before assertions, always.
 ---
 
 <!-- kit patch: provenance note; description sharpened (upstream: "Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always") -->
@@ -53,7 +53,7 @@ Skip any step = lying, not verifying
 | Requirements met | Line-by-line checklist | Tests passing |
 <!-- kit patch: SDD-specific claims -->
 | UI works | Built-in browser on localhost as a seeded test user: page text or screenshot of the expected state | Template renders in a unit test |
-| Stream/PRD done | `git diff --name-only <base>..HEAD` ⊆ PRD owned files, plus PRD gates green | Stream's own summary |
+| Stream/PRD done | `git status --porcelain --untracked-files=all` (new since the start) ⊆ PRD owned files, `git diff --stat -- <owned>` as expected, plus PRD gates green | Stream's own summary |
 | Requirement covered | Test id or evidence row in `registers/REQUIREMENT-COVERAGE.csv` | "Covered by the new tests" |
 <!-- /kit patch -->
 
@@ -62,7 +62,7 @@ Skip any step = lying, not verifying
 - Using "should", "probably", "seems to"
 - Expressing satisfaction before verification ("Great!", "Perfect!", "Done!", etc.)
 <!-- kit patch: agents never push or open PRs -->
-- About to commit, hand off, or tell the user the branch is ready to push without verification
+- About to stage, hand off, or give the developer commit/push commands without verification
 <!-- /kit patch -->
 - Trusting agent success reports
 - Relying on partial verification
@@ -122,7 +122,7 @@ Skip any step = lying, not verifying
 |---|---|---|
 | Targeted tests pass | `<your test command> <path>` | PRD report (verbatim count line) |
 | Suite green | `<your test command>` (full suite) | PRD report, `05-qa-report.md` |
-| Scope respected | `git diff --name-only <base>..HEAD` vs the PRD's "Owned files" | PRD report |
+| Scope respected | `git status --porcelain --untracked-files=all -- <owned>` and `git diff --stat -- <owned>`; nothing changed outside the owned files (opt-in commits: `git diff --name-only <base>..HEAD`) | PRD report |
 | Reviewed | `/code-review` and `/security-review` output, findings triaged | `05-qa-report.md` |
 | Independent check | `qa-verifier` agent's final `VERDICT:` block | `05-qa-report.md` |
 | UI / journey | Built-in browser as a seeded test user on localhost | `06-demo.md` |
@@ -140,7 +140,7 @@ Evidence never contains personal data or secrets.
 - ANY expression of satisfaction
 - ANY positive statement about work state
 <!-- kit patch: hand-off instead of PR creation -->
-- Committing, writing the hand-off note, task completion
+- Staging, handing the developer commit commands, writing the hand-off note, task completion
 <!-- /kit patch -->
 - Moving to next task
 - Delegating to agents

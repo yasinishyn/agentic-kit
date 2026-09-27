@@ -3,6 +3,12 @@
 Paths are relative to the repo root. Templates live in `.SDD/templates/`; stage outputs go in `.SDD/specs/<slug>/`.
 Placeholders such as `<your test command>` are defined once per project in `CLAUDE.md`.
 
+**Git in every stage** (guard flag `ALLOW_AGENT_COMMITS`, default off): agents read git and stage with
+`git add -- <explicit paths>`; they never commit, push, create branches or worktrees. **Every stage that changed files
+ends with the "Git — for the developer" block** from `handoff-note.md`, in chat: the branch command if needed, what is
+staged, and the `git commit` / `git push` commands with suggested messages. If the project opted in, agents may commit
+as the developer instead (see `parallel-work.md`, "Opt-in variant").
+
 ---
 
 ## 1. Discovery
@@ -11,7 +17,7 @@ Placeholders such as `<your test command>` are defined once per project in `CLAU
 
 **Steps**
 1. Create `.SDD/specs/<slug>/` with a short kebab-case slug. Copy `discovery.md` to `01-discovery.md` and fill the
-   header (tier and why, branch, Status Draft).
+   header (tier and why, the developer's current branch, Status Draft).
 2. State the goal neutrally in one precise paragraph (§1: "the feature must deliver …"), never as quotes from a message
    or e-mail. Separate facts from assumptions.
 3. Read existing knowledge first: `.claude/memory/`, project docs, previous specs in `.SDD/specs/`. Re-verify any
@@ -84,7 +90,8 @@ may stay open, but an open domain ruling blocks the PRDs it affects.
 7. **STOP.** Present in chat: the tier; the PRD table (scope, owned files, dependencies, parallelisable); the ADRs
    that need a decision; open questions; top risks; proposed waves. Ask the user to approve and say "execute".
 8. When the user approves, add `Approved for execution by the user in chat on <date>` to the `03-architecture.md`
-   header. The folder is committed only once execution starts.
+   header. Stage the spec folder (`git add -- .SDD/specs/<slug>`) and give the git block with the suggested message
+   `<slug>: spec (discovery, architecture, ADRs, PRDs)`; the developer commits it.
 
 **Exit gate:** an explicit approval from the user in chat. Nothing in Developer, QA, Demo or E2E starts without it.
 
@@ -103,7 +110,8 @@ may stay open, but an open domain ruling blocks the PRDs it affects.
 
 **Entry:**
 - The user has approved.
-- The feature branch is checked out in the main checkout and the tree is clean.
+- The developer's branch is checked out (agents don't create or switch branches), and the pre-existing dirty paths are
+  recorded: `git status --porcelain --untracked-files=all`. None of them is an owned file.
 - `<your local environment>` is up.
 - A **baseline** is recorded: the full suite at the base commit, with verbatim counts, so pre-existing failures are
   not blamed on the feature.
@@ -114,11 +122,12 @@ may stay open, but an open domain ruling blocks the PRDs it affects.
    minimal code until GREEN; refactor only while green. Expected values are literals from the spec or test vectors.
 3. Use **systematic-debugging** on any failure. After 3 failed fixes, stop and ask.
 4. Run the PRD gates and quote the summary lines verbatim.
-5. Commit **owned files only**: check `git diff --name-only` against the owned list, stage with `git add <paths>`,
-   message `PRD-NN: <summary> (<SLUG>-FR-..)`.
-6. Update the register. In parallel mode only the orchestrator does this.
+5. Stage **owned files only**: `git status --porcelain --untracked-files=all` (minus the recorded pre-existing paths)
+   must be ⊆ the owned list, then `git add -- <owned paths>`. Propose the message `PRD-NN: <summary> (<SLUG>-FR-..)`.
+6. Update the register and the PRD's `status:`. In parallel mode only the orchestrator does this.
 
 **Exit gate:** every PRD gate green, the full suite no worse than the baseline, every FR in the register has a test.
+End with the git block: one `git commit -m "PRD-NN: …" -- <owned paths>` per PRD.
 
 **Failure modes**
 - Tests that assert on mocks. Editing tests until they pass.
@@ -131,24 +140,27 @@ may stay open, but an open domain ruling blocks the PRDs it affects.
 
 ## 4. QA
 
-**Entry:** Developer exit gate met, with a committed HEAD.
+**Entry:** Developer exit gate met, with every PRD's owned files staged (or committed, if the project opted in).
 
 **Steps**
-1. Run the **full suite** (`<your test command>`) on HEAD and compare with the baseline. Any new failure is a bug.
+1. Run the **full suite** (`<your test command>`) on the current working tree and compare with the baseline. Any new failure is a bug.
    Quote the counts verbatim.
 2. Run any extra gates the human will face at release time (`<your pre-release checks>`: lint, type check, build,
    contract or smoke tests).
-3. Run the built-in **`/code-review`** on the branch diff against the merge base. Verify each finding before acting on
-   it; don't perform agreement.
+3. Run the built-in **`/code-review`** on the feature's changes: the working tree against `HEAD` (`git diff HEAD`,
+   plus new files), or the branch against its merge base if the project opted in to agent commits. Verify each
+   finding before acting on it; don't perform agreement.
 4. Run the built-in **`/security-review`**, then the [abuse checklist](abuse-checklist.md) on localhost for every
    surface the feature adds or reuses.
-5. For each bug: a failing test, the fix, a re-run. Log it in the report.
-6. Run the **qa-verifier** agent. Give it the spec path, branch, HEAD and evidence paths, **not** your conclusions.
+5. For each bug: a failing test, the fix, a re-run, then `git add` the changed owned files again. Log it in the report.
+6. Run the **qa-verifier** agent. Give it the spec path, checkout path, owned files (or commit range, if opted in) and
+   evidence paths, **not** your conclusions.
    Record its verdict verbatim. (Not registered? Default agent told to Read `.claude/agents/qa-verifier.md` first.)
 7. Apply **verification-before-completion** before writing any verdict.
 8. Write `05-qa-report.md` from `qa-report.md`.
 
-**Exit gate:** no open Critical or High findings. Residual risks listed with owners.
+**Exit gate:** no open Critical or High findings. Residual risks listed with owners. Git block for the fixes and the
+report.
 
 **Failure modes**
 - Comparing against a different baseline.
@@ -161,7 +173,7 @@ may stay open, but an open domain ruling blocks the PRDs it affects.
 
 ## 5. Demo
 
-**Entry:** QA exit gate met; the main checkout is on the feature branch; the local app is running, migrated and seeded
+**Entry:** QA exit gate met; the local app runs from the checkout that holds the feature's changes, migrated and seeded
 with test users, in a mode where cookies work over plain HTTP on localhost.
 
 **Steps**
@@ -192,7 +204,7 @@ with test users, in a mode where cookies work over plain HTTP on localhost.
 **Entry:** Demo reviewed, or skipped for non-UI work. The local app is up.
 
 **Steps**
-1. Re-run the full suite on the final HEAD.
+1. Re-run the full suite on the final working tree.
 2. Run the project's own E2E automation (`<your e2e command>`) with the base URL set **explicitly** to the local app;
    never rely on a default that may point at a shared environment. Store evidence under
    `.SDD/specs/<slug>/evidence/e2e/`.
@@ -212,11 +224,13 @@ with test users, in a mode where cookies work over plain HTTP on localhost.
 ## Handoff (always)
 
 Copy `handoff-note.md` into the spec folder and fill it in:
-- branch, base, and `git log --oneline <base>..HEAD`;
+- branch, base commit, and what is staged (`git diff --cached --stat`; `git status --short` for anything unstaged);
 - what changed, per PRD;
 - evidence: verbatim counts and links to reports 05, 06 and 07;
 - migrations: written but **not applied** to any shared DB, with the apply order and target environments for the human;
 - residual risks and open questions with their owners;
-- the exact commands the user runs (`<your deploy scripts>` stay with the human).
+- the **Git — for the developer** block: branch, add, one commit per PRD plus one for the spec, push, each with its
+  suggested message (with the opt-in: `git log --oneline <base>..HEAD` and the push command);
+- the deploy steps the user runs (`<your deploy scripts>` stay with the human).
 
 If stopping early, say so and describe how to resume, naming the stage and the next file to write.

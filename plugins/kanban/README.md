@@ -2,7 +2,7 @@
 
 The board is a **view over the spec files**; the markdown is the source of truth.
 - **A ticket is a spec folder**, and its **columns are the ADLC stages**.
-- **Status lives in frontmatter**, so it's committed and reviewed with the code, and it works without the plugin too.
+- **Status lives in frontmatter**, so the developer commits it and reviews it with the code, and it works without the plugin too.
 - **Every markdown file is one click away** on the board.
 
 ```

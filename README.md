@@ -5,7 +5,7 @@ A project-neutral starter kit for **Claude Code**. It gives any repository:
 - **a light spec-driven delivery flow (SDD):** Discovery → Architect → your approval → Developer → QA → Demo → E2E;
 - **engineering discipline:** test-driven development, systematic debugging, evidence before "done";
 - **two review agents;**
-- **guardrails** that stop agents from pushing, deploying, calling cloud CLIs or reading credentials;
+- **guardrails** that stop agents from committing or pushing (by default), deploying, calling cloud CLIs or reading credentials;
 - **optionally, a kanban board** over your spec markdown: tickets are spec folders, and the columns are the ADLC stages.
 
 You pick the parts you want. The installer **only adds**: it never overwrites your files, skills, agents or SDD setup.
@@ -98,11 +98,25 @@ claude plugin install kanban@agentic-kit
 | `sdd` | The `sdd` skill plus the process README, spec templates and a `specs/` folder | `.claude/skills/sdd/`, `.SDD/` |
 | `skills` | `test-driven-development`, `systematic-debugging`, `verification-before-completion` | `.claude/skills/` |
 | `agents` | `architect` (independent design review), `qa-verifier` (evidence-based QA verdict) | `.claude/agents/` |
-| `guard` | A PreToolUse hook that blocks `git push`, deploy scripts, the AWS CLI, non-local database clients and credential reads; deny rules added to your settings | `.claude/hooks/`, `.claude/settings.json` |
+| `guard` | A PreToolUse hook that blocks git commit/push by default (opt-in for commits as the developer), deploy scripts, the AWS CLI, non-local database clients and credential reads; deny rules added to your settings | `.claude/hooks/`, `.claude/settings.json` |
 | `instructions` | A `CLAUDE.md` template (hard rules, how we work) and a long-term memory index | `CLAUDE.md`, `.claude/memory/` |
 | `kanban` | A Claude Code plugin: a board over `.SDD/specs` (tickets = spec folders, columns = stages), MCP tools, a `ticket` kick-off skill | installed with `claude plugin …` (see below) |
 
 All of them except `kanban` are selected by default.
+
+### Git policy
+
+- **Default:** agents may stage (`git add`) and use read-only git (`status`, `diff`, `log`, `show`). They never
+  commit, push, merge, rebase, cherry-pick, revert, `am` or pull, and the `sdd` skill never creates branches or
+  worktrees: parallel streams are subagents in your checkout on disjoint files. Work is left staged; each stage and
+  the hand-off note end with a **"Git — for the developer"** block with the exact branch, commit and push commands and
+  suggested messages. You commit and push.
+- **Opt-in (agents commit as you):** set `ALLOW_AGENT_COMMITS = True` in `.claude/hooks/guard_bash.py`, remove
+  `"Bash(git push *)"` from `permissions.deny` in `.claude/settings.json`, and keep
+  `"attribution": {"commit": "", "pr": ""}` there. Agents then commit under your own git identity: the guard still
+  blocks a Claude/AI author or committer, a `Co-Authored-By: Claude` trailer and any change to `user.name`/`user.email`.
+  The `sdd` skill may then use worktrees and stream branches for parallel work. Deploys stay human-only either way.
+- Details and tests: [.claude/hooks/README.md](.claude/hooks/README.md).
 
 ## Install options
 
@@ -191,6 +205,7 @@ Details: [plugins/kanban/README.md](plugins/kanban/README.md).
 
 - **Start a feature:** "spec this: …" or `/sdd …`. Claude runs Discovery and Architect, writes `.SDD/specs/<slug>/`, and **stops for your approval**. Say **"execute"** to start the build.
 - **Small fixes:** the `sdd` skill tiers them down to Developer → QA.
+- **Committing:** Claude stages its work and hands you the commit and push commands with suggested messages (see Git policy).
 - **Review agents:** Claude uses `architect` and `qa-verifier` at the Architect and QA stages. If your Claude Code doesn't register custom agents, the skill tells Claude to read `.claude/agents/<name>.md` instead.
 
 ## Removing it

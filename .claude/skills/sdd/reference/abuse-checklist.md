@@ -17,7 +17,9 @@ line numbers drift.
 - **Credentials:** test-user passwords live in the local seed config. Never echo them or put them in reports or URLs.
 - **Every probe that can be automated becomes a regression test** (e.g. `tests/<feature>/test_abuse.*`). A failing
   probe is a bug: failing test first, then the fix (QA step 5).
-- **Pre-existing or new?** When a probe fails, re-run it on the base commit.
+- **Pre-existing or new?** When a probe fails, establish whether it also fails on the base commit: usually the probed
+  code is untouched by the feature (`git diff HEAD -- <path>` is empty); otherwise ask the developer to run it on a
+  checkout of the base. Agents don't stash, switch branches or create worktrees for this.
   - A pre-existing platform weakness is recorded as a finding with an owner and listed under residual risks. It is not
     fixed inside the feature without an ADR and the user's go-ahead.
   - Auth, permissions, access policy, document rendering and upload validation are Full-tier surfaces, so a fix there
