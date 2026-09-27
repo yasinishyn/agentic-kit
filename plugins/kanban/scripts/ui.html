@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kanban</title>
+<style>
+  :root { --bg:#f4f5f7; --col:#e9ebee; --card:#fff; --text:#1d2330; --muted:#667085; --line:#d0d5dd;
+          --doing:#2e6be6; --review:#b25e09; --done:#157f3b; --todo:#667085; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12151b; --col:#1b2029; --card:#232a35; --text:#e6e9ef; --muted:#98a2b3; --line:#344054; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.4 system-ui,-apple-system,Segoe UI,sans-serif; background:var(--bg); color:var(--text); }
+  header { display:flex; gap:12px; align-items:center; padding:12px 16px; }
+  header h1 { font-size:16px; margin:0; }
+  header .muted { color:var(--muted); font-size:12px; }
+  form { margin-left:auto; display:flex; gap:6px; }
+  input { padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--text); width:min(280px,50vw); }
+  button { border:1px solid var(--line); background:var(--card); color:var(--text); border-radius:6px; padding:4px 8px; cursor:pointer; }
+  main { display:grid; grid-template-columns:repeat(4, minmax(220px,1fr)); gap:12px; padding:0 16px 16px; overflow-x:auto; }
+  .col { background:var(--col); border-radius:10px; padding:10px; min-height:60vh; }
+  .col h2 { font-size:13px; margin:0 0 8px; display:flex; justify-content:space-between; }
+  .card { background:var(--card); border-radius:8px; padding:8px 10px; margin-bottom:8px; border-left:4px solid var(--todo);
+          box-shadow:0 1px 2px rgba(0,0,0,.08); }
+  .card.doing { border-left-color:var(--doing); } .card.review { border-left-color:var(--review); } .card.done { border-left-color:var(--done); opacity:.8; }
+  .card.child { margin-left:14px; }
+  .meta { color:var(--muted); font-size:11px; display:flex; gap:6px; flex-wrap:wrap; margin-top:4px; }
+  .steps { margin:6px 0 0; padding-left:18px; font-size:12px; }
+  .steps .ok { text-decoration:line-through; color:var(--muted); }
+  .note { font-size:12px; color:var(--muted); margin-top:4px; white-space:pre-wrap; }
+  .actions { display:flex; gap:4px; margin-top:6px; }
+  .actions button { font-size:11px; padding:2px 6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Kanban</h1><span class="muted" id="project"></span>
+  <form id="add"><input id="title" placeholder="Add a card…" maxlength="120"><button>Add</button></form>
+</header>
+<main id="board"></main>
+<script>
+const ORDER = ["todo", "doing", "review", "done"];
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+async function post(path, body) {
+  await fetch(path, {method:"POST", headers:{"Content-Type":"application/json","X-Kanban":"1"}, body:JSON.stringify(body)});
+  load();
+}
+function cardHtml(c, labels) {
+  const i = ORDER.indexOf(c.status);
+  const done = c.steps.filter(s => s.done).length;
+  const steps = c.steps.length ? `<ol class="steps">${c.steps.map(s => `<li class="${s.done?"ok":""}">${esc(s.text)}</li>`).join("")}</ol>` : "";
+  return `<div class="card ${c.status} ${c.parent ? "child" : ""}">
+    <div><strong>${esc(c.id)}</strong> ${esc(c.title)}</div>
+    ${c.note ? `<div class="note">${esc(c.note)}</div>` : ""}${steps}
+    <div class="meta"><span>${esc(c.source)}</span>${c.parent ? `<span>in ${esc(c.parent)}</span>` : ""}
+      ${c.steps.length ? `<span>${done}/${c.steps.length} steps</span>` : ""}<span>${esc((c.updated||"").slice(0,16).replace("T"," "))}</span></div>
+    <div class="actions">
+      ${i > 0 ? `<button data-move="${esc(c.id)}" data-to="${ORDER[i-1]}">← ${esc(labels[ORDER[i-1]])}</button>` : ""}
+      ${i < 3 ? `<button data-move="${esc(c.id)}" data-to="${ORDER[i+1]}">${esc(labels[ORDER[i+1]])} →</button>` : ""}
+      <button data-del="${esc(c.id)}" title="Delete">✕</button>
+    </div></div>`;
+}
+let last = "";
+async function load() {
+  const r = await fetch("/api/board", {cache:"no-store"}); if (!r.ok) return;
+  const raw = await r.text(); if (raw === last) return;   // redraw only on change, so clicks never hit a stale DOM
+  last = raw; const b = JSON.parse(raw);
+  document.getElementById("project").textContent = b.project;
+  document.getElementById("board").innerHTML = ORDER.map(s => {
+    const cards = b.cards.filter(c => c.status === s);
+    const ordered = cards.filter(c => !c.parent || !cards.some(p => p.id === c.parent))
+      .flatMap(p => [p, ...cards.filter(c => c.parent === p.id)]);
+    const rest = cards.filter(c => !ordered.includes(c));
+    return `<section class="col"><h2><span>${esc(b.statuses[s])}</span><span>${cards.length}</span></h2>
+      ${[...ordered, ...rest].reverse().map(c => cardHtml(c, b.statuses)).join("")}</section>`;
+  }).join("");
+}
+document.addEventListener("click", e => {
+  const m = e.target.closest("[data-move]"), d = e.target.closest("[data-del]");
+  if (m) post("/api/move", {card_id:m.dataset.move, status:m.dataset.to});
+  if (d && confirm(`Delete ${d.dataset.del}?`)) post("/api/delete", {card_id:d.dataset.del});
+});
+document.getElementById("add").addEventListener("submit", e => {
+  e.preventDefault(); const t = document.getElementById("title");
+  if (t.value.trim()) { post("/api/add", {title:t.value.trim()}); t.value = ""; }
+});
+load(); setInterval(load, 2000);
+</script>
+</body>
+</html>

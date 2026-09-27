@@ -1,0 +1,11 @@
+{
+  "description": "Kanban: a card per user prompt; move it to Review when Claude stops",
+  "hooks": {
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py\" prompt", "timeout": 10 } ] }
+    ],
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py\" stop", "timeout": 10 } ] }
+    ]
+  }
+}

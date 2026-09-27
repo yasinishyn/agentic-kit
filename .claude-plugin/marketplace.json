@@ -1,0 +1,12 @@
+{
+  "name": "agentic-kit",
+  "description": "Plugins that come with the agentic-kit starter kit",
+  "owner": { "name": "agentic-kit" },
+  "plugins": [
+    {
+      "name": "kanban",
+      "source": "./plugins/kanban",
+      "description": "A tiny local kanban board fed by your prompts and by Claude over MCP; SDD-aware."
+    }
+  ]
+}

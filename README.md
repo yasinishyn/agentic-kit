@@ -17,6 +17,8 @@ agents and a guard hook that keeps agents away from pushes, deploys, cloud CLIs,
 | `.claude/memory/MEMORY.md` | Index for long-term project memory |
 | `.SDD/` | The process README, spec templates and `specs/` folder |
 | `LICENSES/` | Upstream licences and notices for adapted material |
+| `plugins/kanban/` | Optional Claude Code plugin: a tiny local progress board. A card per prompt; Claude updates it over MCP; SDD-aware ([README](plugins/kanban/README.md)) |
+| `.claude-plugin/marketplace.json` | Makes this repo a plugin marketplace named `agentic-kit` |
 
 ## Install
 ```bash
@@ -30,6 +32,16 @@ Then, in the project:
 3. Review `.claude/settings.json`, then commit the kit on a feature branch.
 
 Requirements: `bash`, `python3` (the hook fails closed without it), `jq` optional.
+
+## Optional: the kanban board plugin
+The plugin is installed per user, not copied by `install.sh`:
+```bash
+claude plugin marketplace add /path/to/agentic-kit   # or <owner>/<repo> once it is on GitHub
+claude plugin install kanban@agentic-kit
+```
+Then restart Claude Code. Every prompt becomes a card on a local web board. The `sdd` skill uses the board automatically
+when the kanban tools are available: one feature card with a step per stage, plus one card per PRD. See
+[plugins/kanban/README.md](plugins/kanban/README.md).
 
 ## Licences
 Parts of the skills and agents are adapted from MIT-licensed projects:

@@ -106,6 +106,18 @@ followed by the brief.
 - **After each wave:** check the main checkout's branch and HEAD are unchanged and each stream's
   `git diff --name-only` ⊆ its owned files; merge locally with `--no-ff`; run the full gates; update the registers.
 
+## Progress board (optional: `kanban` plugin)
+If the `kanban` MCP tools are available (`mcp__plugin_kanban_kanban__*`; load them with ToolSearch "kanban"),
+record the flow on the board so the user can follow it. Details are in the plugin's `kanban` skill.
+- **Start of a feature:** add a card `SDD: <slug>` in `doing` with one step per stage (Discovery, Architect, Approval,
+  Developer, QA, Demo, E2E, Hand-off) and the spec path as its note.
+- **Each gate that passes:** tick that stage's step. At the approval STOP, move the card to `review`; back to `doing`
+  on "execute".
+- **Architect stage:** one child card per PRD (`PRD-NN: <title>`, `todo`). Move it to `doing` when its stream starts,
+  to `review` when its gates are green, and to `done` after QA accepts it.
+- **Blocking open questions:** optional child cards `OQ <id>: …` in `review`.
+- **Who updates it:** the main session, at stage boundaries only; subagents don't. A board failure never blocks the work.
+
 ## Non-negotiables
 
 1. **Never push, deploy or open PRs.** `.claude/settings.json` and `.claude/hooks/guard-bash.sh` enforce this. If the
