@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "deny": [
+      "Bash(aws *)",
+      "Bash(git push *)",
+      "Bash(./deploy/*)",
+      "Bash(bash deploy/*)",
+      "Bash(sh deploy/*)",
+      "Bash(gh pr create *)",
+      "Bash(gh pr merge *)",
+      "Read(~/.aws/**)",
+      "Read(~/.ssh/**)",
+      "Read(**/.env)",
+      "Read(./deploy/.env*)",
+      "mcp__claude-in-chrome"
+    ],
+    "ask": [
+      "Bash(git merge *)",
+      "Bash(git branch -D *)",
+      "Bash(git worktree remove *)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/guard-bash.sh",
+            "timeout": 15,
+            "statusMessage": "Guard: checking command"
+          }
+        ]
+      }
+    ]
+  }
+}
