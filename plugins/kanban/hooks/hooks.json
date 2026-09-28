@@ -1,0 +1,19 @@
+{
+  "description": "Kanban live indicator: tool activity heartbeats and 'waiting for you' when Claude stops (scripts/hook.py; exits 0 at once without a board daemon).",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "hooks": [
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py\"", "timeout": 2 }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py\"", "timeout": 2 }
+        ]
+      }
+    ]
+  }
+}

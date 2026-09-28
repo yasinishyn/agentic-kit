@@ -1,6 +1,6 @@
 ---
 title: PRD-05 - Approval dialog, spec editor with diff, git panel
-status: todo
+status: done
 updated: 2026-09-28
 ---
 
@@ -17,13 +17,13 @@ updated: 2026-09-28
 Human approval on the board, in-app editing of ticket markdown with a diff since approval, and a read-only git panel.
 
 ## Acceptance criteria
-- [ ] `beforeMove`: any move that `transition_allowed` answers `approval_required`/`spec_changed` opens a dialog (files + hash12); 'Approve and execute' → `POST …/approve` (UI token) → move; Cancel keeps the card; focus trapped and returned
-- [ ] Approve uses `kanban_db.record_approval` via the PRD-02 endpoint (actor `human (board)`); `board_recorded` = latest approvals row has actor `human (board)`
-- [ ] Badges: 'spec changed since approval' (with diff link) and 'approval not recorded' (README `approved_*` without any matching `approvals` row, whatever the actor)
-- [ ] `GET/PUT …/file?path=` confined to `.SDD/specs/**.md` (symlinks resolved), PUT needs `If-Match` (409 on mismatch), refuses changes to `status` and `approved_*` frontmatter keys, atomic write
-- [ ] `GET …/diff/<slug>` unified diff since the snapshot
-- [ ] `GET …/git`: argv exactly `git --no-optional-locks -c core.fsmonitor= -C <root> status --porcelain=v1` and `git -C <root> rev-parse --abbrev-ref HEAD`; latest `handoff-note.md` git block shown read-only
-- [ ] Editor keyboard accessible (textarea, Cmd/Ctrl-S), labels, visible focus
+- [x] `beforeMove`: any move that `transition_allowed` answers `approval_required`/`spec_changed` opens a dialog (files + hash12); 'Approve and execute' → `POST …/approve` (UI token) → move; Cancel keeps the card; focus trapped and returned
+- [x] Approve uses `kanban_db.record_approval` via the PRD-02 endpoint (actor `human (board)`); `board_recorded` = latest approvals row has actor `human (board)`
+- [x] Badges: 'spec changed since approval' (with diff link) and 'approval not recorded' (README `approved_*` without any matching `approvals` row, whatever the actor)
+- [x] `GET/PUT …/file?path=` confined to `.SDD/specs/**.md` (symlinks resolved), PUT needs `If-Match` (409 on mismatch), refuses changes to `status` and `approved_*` frontmatter keys, atomic write
+- [x] `GET …/diff/<slug>` unified diff since the snapshot
+- [x] `GET …/git`: argv exactly `git --no-optional-locks -c core.fsmonitor= -C <root> status --porcelain=v1` and `git -C <root> rev-parse --abbrev-ref HEAD`; latest `handoff-note.md` git block shown read-only
+- [x] Editor keyboard accessible (textarea, Cmd/Ctrl-S), labels, visible focus
 
 ## Owned files (only these may change)
 - `plugins/kanban/scripts/routes_specs.py` (new)

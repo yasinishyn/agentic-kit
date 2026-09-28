@@ -1,6 +1,6 @@
 ---
 title: PRD-07 - Desktop app shell (Tauri 2) and embedded terminal
-status: todo
+status: done
 updated: 2026-09-28
 ---
 
@@ -13,18 +13,22 @@ updated: 2026-09-28
 | Depends on | PRD-02 |
 | Parallelisable | Yes — wave 3, with PRD-03 and PRD-05; needs Rust + tauri-cli |
 
+> **Unblocked 2026-09-28:** rustc 1.98.1, cargo 1.98.1, tauri-cli 2.12.0 installed by the owner; downloads of crates (crates.io) and @xterm/xterm 5.x (jsdelivr) approved by the owner in chat.
+
+> Live terminal check in the running app (IPC → PTY → xterm, Shift+Esc, menu items) was not possible in the agent environment (screen capture / accessibility denied); carried to Demo. PTY layer covered by `cargo test` (15/15).
+
 ## Goal
 A macOS Tauri 2 app that ensure-starts the daemon, shows the board in a native window with the UI token held in memory, and provides a PTY terminal per project.
 
 ## Acceptance criteria
-- [ ] `python3` resolved via login shell then `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin`; error screen if missing or < 3.9
-- [ ] Runs bundled `daemon.py --ensure`; window loads the daemon origin; other navigations open in the default browser
-- [ ] UI token read by Rust and injected by an initialization script on the daemon origin only; never in URLs or logs
-- [ ] Capability `remote.urls` = exact daemon origin; terminal commands allowed on the main window only; `term_open(project_id, preset)` resolves the path through the daemon registry; presets shell and `claude --dangerously-load-development-channels plugin:kanban@agentic-kit`
+- [x] `python3` resolved via login shell then `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin`; error screen if missing or < 3.9
+- [x] Runs bundled `daemon.py --ensure`; window loads the daemon origin; other navigations open in the default browser
+- [x] UI token read by Rust and injected by an initialization script on the daemon origin only; never in URLs or logs
+- [x] Capability `remote.urls` = exact daemon origin; terminal commands allowed on the main window only; `term_open(project_id, preset)` resolves the path through the daemon registry; presets shell and `claude --dangerously-load-development-channels plugin:kanban@agentic-kit`
 - [ ] `ui/modules/terminal.js` (xterm.js) hidden in browser mode; keyboard focus can leave the terminal (documented shortcut)
-- [ ] Menu: Reload, Open in browser (`--open`), Stop board service (disabled when `GET /api/runs?live=1` reports runs; enabled if the endpoint is absent), Quit
-- [ ] `plugins/kanban/app/.gitignore` ignores `src-tauri/target/`; xterm.js vendored with its MIT licence (download only with the owner's permission)
-- [ ] `cargo test` green; `cargo tauri build --bundles app` produces `Kanban.app`; smoke launch opens the board
+- [x] Menu: Reload, Open in browser (`--open`), Stop board service (disabled when `GET /api/runs?live=1` reports runs; enabled if the endpoint is absent), Quit
+- [x] `plugins/kanban/app/.gitignore` ignores `src-tauri/target/`; xterm.js vendored with its MIT licence (download only with the owner's permission)
+- [x] `cargo test` green; `cargo tauri build --bundles app` produces `Kanban.app`; smoke launch opens the board
 
 ## Owned files (only these may change)
 - `plugins/kanban/app/**` (new, incl. `app/.gitignore`)

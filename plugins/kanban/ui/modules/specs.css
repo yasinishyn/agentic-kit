@@ -1,0 +1,38 @@
+/* PRD-05: approval dialog, diff views, spec editor and git panel (tokens from board.css). */
+.sp-overlay { position:fixed; inset:0; background:rgba(10,14,22,.55); display:grid; place-items:center; z-index:20;
+              padding:16px; }
+.sp-dialog { background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:10px;
+             box-shadow:0 12px 32px rgba(0,0,0,.3); width:min(680px, 100%); max-height:88vh; overflow:auto;
+             padding:16px 18px; }
+.sp-dialog:focus { outline:none; }
+.sp-dialog:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+.sp-dialog h2 { font-size:16px; margin:0 0 10px; }
+.sp-dialog h3 { font-size:12px; text-transform:uppercase; color:var(--muted); margin:12px 0 4px; }
+.sp-buttons { display:flex; gap:8px; justify-content:flex-end; margin-top:12px; flex-wrap:wrap; }
+.sp-buttons button { padding:6px 12px; font-size:13px; }
+button.sp-primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+button.sp-primary:hover { filter:brightness(1.08); }
+.sp-dialog button:disabled, .plugin-panel button:disabled { opacity:.55; cursor:not-allowed; }
+.sp-files { list-style:none; margin:0; padding:0; }
+.sp-files li { padding:2px 0; overflow-wrap:anywhere; }
+.sp-hash { font-weight:600; }
+.sp-error { color:var(--bad); font-size:12px; }
+.sp-error:empty { display:none; }
+.sp-details summary { cursor:pointer; margin:8px 0 4px; }
+.sp-diff, .sp-block { background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px; margin:6px 0;
+                      overflow:auto; max-height:50vh; font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;
+                      white-space:pre; }
+.sp-diff .sp-add { color:var(--ok); }
+.sp-diff .sp-del { color:var(--bad); }
+.sp-diff .sp-hunk { color:var(--accent); }
+.sp-diff .sp-file { color:var(--muted); font-weight:600; }
+.sp-diff-link { font-size:10px; padding:0 6px; border-radius:10px; color:var(--warn); border-color:currentColor;
+                margin-left:4px; }
+.sp-label { display:block; font-size:12px; font-weight:600; margin:8px 0 3px; }
+.sp-file-pick { max-width:100%; }
+.sp-editor-text { display:block; width:100%; min-height:45vh; resize:vertical; padding:8px; border:1px solid var(--line);
+                  border-radius:6px; background:var(--bg); color:var(--text);
+                  font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; tab-size:2; }
+.sp-editor-text:focus-visible { outline:2px solid var(--focus); outline-offset:1px; }
+.sp-git-group h4, .plugin-panel h4 { font-size:12px; margin:10px 0 4px; }
+@media (forced-colors: active) { .sp-dialog { border:2px solid CanvasText; } }

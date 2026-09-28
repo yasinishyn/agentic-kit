@@ -5,18 +5,23 @@
 - Sub-task = prd/*.md and tasks/*.md inside the ticket, each with `status: todo|doing|blocked|done`.
 - Progress = markdown checkboxes (`- [ ]` / `- [x]`) in those files.
 Folders starting with "_" or "." are not tickets. Standard library only; writes are atomic and never delete files.
+README writers (move_ticket, approve) serialise on ticket_lock: an flock on the ticket folder itself, so the daemon
+and every MCP server (separate processes) never lose each other's read-modify-write, and no lock file is created.
 """
 from __future__ import annotations
 
 import datetime as _dt
+import fcntl
 import os
 import re
 import tempfile
+import threading
+from contextlib import contextmanager
 from pathlib import Path
 
-STAGES = ("discovery", "architect", "approval", "developer", "qa", "demo", "e2e", "done")
-STAGE_LABELS = {"discovery": "Discovery", "architect": "Architect", "approval": "Approval", "developer": "Developer",
-                "qa": "QA", "demo": "Demo", "e2e": "E2E", "done": "Done"}
+import kanban_rules as rules
+from kanban_rules import ACTORS, STAGE_LABELS, STAGES  # noqa: F401  (re-exported: km.STAGES, km.STAGE_LABELS)
+
 SUB_STATUSES = ("todo", "doing", "blocked", "done")
 SUB_DIRS = ("prd", "tasks")
 CHECK_RE = re.compile(r"^(\s*[-*] \[)([ xX])(\] )(.*)$")
@@ -192,12 +197,64 @@ def create_ticket(root: Path, title: str, slug: str | None = None, summary: str 
     return read_ticket(root, folder)
 
 
+def spec_texts(folder: Path) -> dict[str, str]:
+    """{relative posix name: text} of the files the spec hash covers (README excluded)."""
+    files = {p for pattern in rules.SPEC_PATTERNS for p in folder.glob(pattern) if p.is_file()}
+    return {p.relative_to(folder).as_posix(): p.read_text() for p in files}
+
+
+def spec_hash(folder: Path) -> str:
+    return rules.spec_hash_from_texts(spec_texts(Path(folder)))
+
+
+_HELD = threading.local()
+
+
+@contextmanager
+def ticket_lock(folder: Path):
+    """Exclusive cross-process lock on a ticket folder (flock on the directory); re-entrant within a thread."""
+    key = os.path.realpath(folder)
+    held = getattr(_HELD, "keys", None)
+    if held is None:
+        held = _HELD.keys = set()
+    if key in held:
+        yield
+        return
+    fd = os.open(key, os.O_RDONLY)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        held.add(key)
+        try:
+            yield
+        finally:
+            held.discard(key)
+    finally:
+        os.close(fd)  # releases the flock
+
+
 def move_ticket(root: Path, ticket: str, stage: str) -> dict:
-    stage = stage.lower()
+    """The only writer of a ticket README's stage; guarded by kanban_rules.transition_allowed."""
+    stage = str(stage).lower()
     if stage not in STAGES:
         raise ValueError(f"stage must be one of {', '.join(STAGES)}")
     path = ticket_readme(root, ticket)
-    text = set_fields(path.read_text(), {"status": stage, "updated": today()})
+    with ticket_lock(path.parent):
+        return _move_locked(root, ticket, stage, path)
+
+
+def _move_locked(root: Path, ticket: str, stage: str, path: Path) -> dict:
+    text = path.read_text()
+    current = read_ticket(root, path.parent)["status"]
+    fields = split_frontmatter(text)[0]
+    approval = rules.approval_state(fields, spec_hash(path.parent)) if rules.approval_record(fields) else "none"
+    verdict = rules.transition_allowed(current, stage, approval)
+    if verdict == "approval_required":
+        raise ValueError(f"approval required: {ticket} cannot move from {current} to {stage} without a recorded "
+                         f"approval (approve it first)")
+    if verdict == "spec_changed":
+        raise ValueError(f"spec changed since approval: {ticket} needs a new approval to move from {current} "
+                         f"to {stage}")
+    text = set_fields(text, {"status": stage, "updated": today()})
     # tick the Progress checkboxes of every stage before the new one (never unticks)
     for s in STAGES[:STAGES.index(stage)]:
         try:
@@ -208,7 +265,34 @@ def move_ticket(root: Path, ticket: str, stage: str) -> dict:
     return read_ticket(root, path.parent)
 
 
+def approve(root: Path, ticket: str, actor: str) -> dict:
+    """Record an approval: README frontmatter approved_by/at/hash and the approval line under the 03-*.md header
+    table (in the README body when the ticket has no 03-*.md). Re-approval replaces the line."""
+    if actor not in ACTORS:
+        raise ValueError(f"actor must be one of {', '.join(ACTORS)}")
+    readme = ticket_readme(root, ticket)
+    with ticket_lock(readme.parent):
+        return _approve_locked(root, ticket, actor, readme)
+
+
+def _approve_locked(root: Path, ticket: str, actor: str, readme: Path) -> dict:
+    folder = readme.parent
+    digest, date = spec_hash(folder), today()
+    line = rules.approval_line(actor, date, digest)
+    arch = sorted(p for p in folder.glob("03-*.md") if p.is_file())
+    text = set_fields(readme.read_text(), {"approved_by": actor, "approved_at": date, "approved_hash": digest})
+    if arch:
+        write_atomic(arch[0], rules.place_approval_line(arch[0].read_text(), line))
+    else:
+        text = rules.place_approval_line(text, line)
+    write_atomic(readme, text)
+    return {"ticket": ticket, "approved_by": actor, "approved_at": date, "approved_hash": digest,
+            "line": line, "path": (arch[0] if arch else readme).relative_to(root).as_posix()}
+
+
 def add_subtask(root: Path, ticket: str, title: str, status: str = "todo", checklist: list[str] | None = None) -> str:
+    if status not in SUB_STATUSES:
+        raise ValueError(f"status must be one of {', '.join(SUB_STATUSES)}")
     folder = ticket_readme(root, ticket).parent / "tasks"
     folder.mkdir(exist_ok=True)
     number = 1 + max((int(m.group(1)) for p in folder.glob("*.md") if (m := re.match(r"(\d+)-", p.name))), default=0)
@@ -220,12 +304,13 @@ def add_subtask(root: Path, ticket: str, title: str, status: str = "todo", check
 
 
 def set_status(root: Path, rel: str, status: str) -> str:
-    """Set `status:` of a sub-task file (prd/*.md, tasks/*.md) or, with a stage, of a ticket README."""
+    """Set `status:` of a sub-task file (prd/*.md, tasks/*.md). A ticket README's stage changes only via move_ticket."""
     path = safe_path(root, rel)
-    status = status.lower()
-    allowed = STAGES if path.name == "README.md" and path.parent.parent == specs_dir(root).resolve() else SUB_STATUSES
-    if status not in allowed:
-        raise ValueError(f"status for {rel} must be one of {', '.join(allowed)}")
+    status = str(status).lower()
+    if path.name == "README.md" and path.parent.parent == specs_dir(root).resolve():
+        raise ValueError(f"{rel} is a ticket README: change its stage with kanban_move (approval rules apply)")
+    if status not in SUB_STATUSES:
+        raise ValueError(f"status for {rel} must be one of {', '.join(SUB_STATUSES)}")
     write_atomic(path, set_fields(path.read_text(), {"status": status, "updated": today()}))
     return f"{rel}: status {status}"
 

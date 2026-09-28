@@ -21,7 +21,7 @@ Status: Open / Decided / Deferred.
 | Q09 | Which moves need a recorded approval? | kit owner | Decided | Decided by kit owner, 2026-09-28: entering developer/qa/demo/e2e/done from any earlier column needs a valid approval (all tiers; Feature-lite approval = agreeing the one-page discovery); `set_status` cannot set a README stage · ADR-006, PRD-01 |
 | Q10 | Does the kit `sdd` skill accept board approvals? | kit owner | Decided | Decided by kit owner, 2026-09-28: amend `sdd` — a board approval verified through `kanban_approval` counts as "execute" and also opts in to parallel streams · PRD-06 |
 | Q11 | `kanban:sdd` vs project `sdd` triggers | kit owner | Decided | Decided by kit owner, 2026-09-28: `kanban:sdd` leads spec requests and board hand-offs; it follows the project `sdd` stage rules/templates when installed; `sdd` stops claiming "spec this" when the plugin is present · PRD-06 |
-| Q13 | Persist terminal sessions in SQLite (FR-03)? | kit owner | Open | Proposed: no — terminals live in the Tauri process; FR-03 amended accordingly · PRD-02, PRD-07 |
+| Q13 | Persist terminal sessions in SQLite (FR-03)? | kit owner | Decided | Proposed default taken: the kit owner approved the spec ("execute", 2026-09-28) without overruling it — terminals live in the Tauri process; FR-03 amended · PRD-02, PRD-07 |
 
 ## Access
 | # | Question | Owner | Status | Decision / next step |
@@ -29,7 +29,9 @@ Status: Open / Decided / Deferred.
 | Q08 | Build toolchain (Rust stable, Node ≥ 18) on the kit owner's Mac | kit owner | Decided | Decided by kit owner, 2026-09-28: owner installs before the app-shell PRD; Python/board PRDs don't depend on it |
 | Q04 | Can sessions in the Claude desktop app (Code tab) be started with `--dangerously-load-development-channels`? If not, is a CLI session (`claude --…`) acceptable for board-driven work? | dev | Decided | Verified by dev, 2026-09-28: Code-tab sessions are launched by Claude.app with a fixed flag set (no `--channels`/development-channels flag), so they cannot receive channel events. Design: auto headless when no channel-capable session is registered; 'Copy prompt' for Code-tab users; the app terminal starts channel-enabled CLI sessions (ADR-004, ADR-008) |
 | Q12 | Residual risk: a same-user agent could read tokens or edit approval fields | kit owner | Decided | Decided by kit owner, 2026-09-28: accepted with scoped tokens, guard rules and a 'not recorded by the board' badge · ADR-006, ADR-007, PRD-02/05/08 |
-| V01 | Does `claude plugin validate` accept a `channels` key? | dev | Open | First step of PRD-03 (docs say yes; not yet run) |
+| V01 | Does `claude plugin validate` accept a `channels` key? | dev | Decided | Verified in PRD-03: accepted (and a bogus value is rejected) |
+| Q14 | Approval gate for moves inside the execution stages (in-flight tickets have no README record) | kit owner | Decided | Decided by kit owner, 2026-09-28 (QA): gate only on entry — entering developer/qa/demo/e2e/done from an earlier column needs a valid approval; moves inside those stages are free; a ticket there without a record shows an "approved before v0.3" badge · amends Q09, ADR-006 |
+| Q15 | kanban_approve without the board daemon (local mode) | kit owner | Decided | Decided by kit owner, 2026-09-28 (QA): record in markdown (README + 03 line, actor human (chat)) behind the same permission prompt; the board later flags it "not recorded by the board" |
 | Q06 | Headless fallback permissions: which `--permission-mode` / `--allowedTools` may a board-started run use? | kit owner | Decided | Decided by kit owner, 2026-09-28: `--permission-mode acceptEdits` + project settings and guard hook; prompts that would block are denied and surfaced on the card; never `--dangerously-skip-permissions` |
 
 ## UI

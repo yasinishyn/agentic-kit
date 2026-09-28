@@ -14,6 +14,8 @@ Always blocked (humans do these, never agents):
   * running anything under a deploy/ directory (./deploy/x.sh, bash deploy/x.sh, python deploy/x.py)
   * psql / pg_dump / pg_restore / mysql ... against a non-local host
   * reading or sourcing credential files: ~/.aws, ~/.ssh, .env and .env.* (except .env.example/.template/.sample)
+  * the kanban board's UI token (…/Kanban/ui.token, $KANBAN_HOME/ui.token) in any command, and HTTP requests to
+    127.0.0.1/localhost paths matching /api/.*(approve|move|files?|runs) (human-only board actions)
 
 Project-specific rules live in the CONFIG block below (empty by default).
 See README.md next to this file for the rule list and tests.
@@ -96,6 +98,13 @@ AI_IDENTITY_RE = re.compile(
 IDENTITY_CHANGE_RE = re.compile(r"\bgit\b[^;&|\n]*\bconfig\b[^;&|\n]*\buser\.(name|email)\s+\S", re.IGNORECASE)
 URL_HOST_RE = re.compile(r"(?:postgres(?:ql)?|mysql|mariadb)://(?:[^@/\s]*@)?\[?([^:/?\s\]]+)")
 SPLIT_RE = re.compile(r"\|\||&&|;|\||\n|&(?!&)")
+# Kanban board (plugins/kanban, architecture §8): the UI token and the UI-only endpoints are the human's.
+KANBAN_UI_TOKEN_RE = re.compile(r"kanban[^/\s'\"]*['\"]?/ui\.token\b", re.IGNORECASE)  # …/Kanban/ui.token, $KANBAN_HOME/…
+KANBAN_CD_RE = re.compile(r"\b(cd|pushd)\s+[^;&|\n]*kanban", re.IGNORECASE)
+UI_TOKEN_WORD_RE = re.compile(r"\bui\.token\b")
+KANBAN_API_RE = re.compile(
+    r"(127\.0\.0\.1|localhost|\[::1\]|0\.0\.0\.0)(:[^/\s'\"]*)?/api/[^\s'\"]*(approve|move|files?|runs)", re.IGNORECASE
+)
 
 
 def _any(patterns: list[str]) -> re.Pattern[str] | None:
@@ -262,8 +271,19 @@ def git_reason(command: str) -> str | None:
     return None
 
 
+def kanban_reason(command: str) -> str | None:
+    """The board's UI token and its human-only endpoints (moves, approvals, file edits, runs) are off limits for
+    agents, in any form (cat, python open(), curl, wget, httpie, urllib, requests …): Claude uses the MCP tools."""
+    if KANBAN_UI_TOKEN_RE.search(command) or (KANBAN_CD_RE.search(command) and UI_TOKEN_WORD_RE.search(command)):
+        return "reading the kanban board's UI token is not allowed: it is the human's (use the kanban MCP tools)."
+    if KANBAN_API_RE.search(command):
+        return ("HTTP requests to the kanban board's move/approve/files/runs endpoints are human-only; "
+                "use the kanban MCP tools (kanban_move, kanban_approve …) instead.")
+    return None
+
+
 def check_command(command: str, depth: int = 0) -> None:
-    reason = git_reason(command)
+    reason = git_reason(command) or kanban_reason(command)
     if reason:
         block(reason)
     forbidden_env = _any(FORBIDDEN_ENV_VARS)

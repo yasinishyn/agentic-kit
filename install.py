@@ -6,6 +6,7 @@
   python3 install.py /path/to/project --all --yes         # everything, no questions
   python3 install.py /path/to/project --dry-run           # show what would happen
   python3 install.py /path/to/project --update            # after `git pull`: refresh kit files you have not edited
+  python3 install.py --only kanban-app [--dry-run]        # build the Kanban desktop app (macOS) into ~/Applications
 
 Rules:
 - an existing file is kept, never overwritten;
@@ -21,6 +22,7 @@ import argparse
 import datetime as dt
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -37,8 +39,25 @@ COMPONENTS = {
     "guard": "Guardrails: guard hook (blocks agent commit/push by default, deploy/aws/credential reads) + deny rules merged into .claude/settings.json",
     "instructions": "CLAUDE.md template + .claude/memory/ (long-term memory index)",
     "kanban": "Kanban plugin: board over .SDD/specs (tickets = spec folders, columns = ADLC stages) + MCP tools + `ticket` skill (claude CLI)",
+    "kanban-app": "Kanban desktop app (macOS): builds Kanban.app from source with cargo tauri and copies it to "
+                  "~/Applications. Only with --only kanban-app (never by default, --all or --update)",
 }
 DEFAULT_ON = ["sdd", "skills", "agents", "guard", "instructions"]
+EXPLICIT_ONLY = {"kanban-app"}  # never selected by --all, the interactive prompt, the manifest or --update
+NOT_FILES = {"kanban", "kanban-app"}  # components that copy no kit files into the project
+# Merged into the project's .claude/settings.json by `guard` and `kanban` (architecture §3.3, §8): approving a spec
+# from chat always asks the human, and the Read tool cannot read the board's UI token (the Bash guard covers Bash).
+KANBAN_PERMISSIONS = {
+    "ask": ["mcp__plugin_kanban_kanban__kanban_approve"],
+    "deny": ["Read(~/Library/Application Support/Kanban/ui.token)"],
+}
+APP_DIR = KIT / "plugins/kanban/app"
+APP_BUNDLE = APP_DIR / "src-tauri/target/release/bundle/macos/Kanban.app"
+APP_HINTS = {  # printed for the user to run; the installer itself never downloads or runs remote scripts
+    "cargo": "Rust (cargo): curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh   then: source ~/.cargo/env",
+    "tauri": "Tauri CLI: cargo install tauri-cli --version '^2' --locked",
+    "xcode": "Xcode command line tools: xcode-select --install",
+}
 SKILLS = {"sdd": ["sdd"], "skills": ["test-driven-development", "systematic-debugging", "verification-before-completion"]}
 
 
@@ -60,6 +79,7 @@ class Installer:
         path = target / MANIFEST
         self.manifest = json.loads(path.read_text()) if path.exists() else {"files": {}}
         self.report: list[tuple[str, str]] = []  # (action, path)
+        self.app_ok = True  # False after a failed kanban-app build (non-zero exit)
 
     # ---------------------------------------------------------------- file primitives
     def put(self, src: Path, rel: str) -> None:
@@ -154,30 +174,31 @@ class Installer:
                 path = self.target / rel / script
                 if path.exists():
                     path.chmod(path.stat().st_mode | 0o111)
-        self.merge_settings(json.loads((KIT / ".claude/settings.json").read_text()))
+        kit = json.loads((KIT / ".claude/settings.json").read_text())
+        self.merge_settings(add_permissions(kit, KANBAN_PERMISSIONS))
 
     def merge_settings(self, kit: dict) -> None:
-        """Add missing permission rules and the guard hook; never remove or change existing values."""
+        """Add missing permission rules and the guard hook (when `kit` has one); never remove or change values."""
         rel = ".claude/settings.json"
         path = self.target / rel
         if not path.exists():
-            self._copy(KIT / rel, path, rel, "added")
+            self.report.append(("added", rel))
+            if not self.dry:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(json.dumps(kit, indent=2) + "\n")
             return
         try:
             cur = json.loads(path.read_text())
         except ValueError:
-            self.report.append(("skipped: not valid JSON, merge the guard hook by hand", rel))
+            self.report.append(("skipped: not valid JSON, merge the permission rules and guard hook by hand", rel))
             return
         before = json.dumps(cur, sort_keys=True)
-        perms = cur.setdefault("permissions", {})
-        for key in ("deny", "ask"):
-            have = perms.setdefault(key, [])
-            have += [r for r in kit.get("permissions", {}).get(key, []) if r not in have]
-        kit_hook = kit["hooks"]["PreToolUse"][0]
-        pre = cur.setdefault("hooks", {}).setdefault("PreToolUse", [])
-        commands = {h.get("command") for group in pre for h in group.get("hooks", [])}
-        if kit_hook["hooks"][0]["command"] not in commands:
-            pre.append(kit_hook)
+        add_permissions(cur, kit.get("permissions", {}))
+        for kit_hook in kit.get("hooks", {}).get("PreToolUse", [])[:1]:
+            pre = cur.setdefault("hooks", {}).setdefault("PreToolUse", [])
+            commands = {h.get("command") for group in pre for h in group.get("hooks", [])}
+            if kit_hook["hooks"][0]["command"] not in commands:
+                pre.append(kit_hook)
         if json.dumps(cur, sort_keys=True) == before:
             self.report.append(("same", rel))
             return
@@ -201,6 +222,7 @@ class Installer:
         self.put_tree(KIT / ".claude/memory", ".claude/memory")
 
     def kanban(self, scope: str) -> None:
+        self.merge_settings({"permissions": KANBAN_PERMISSIONS})
         source = marketplace_source()
         cmds = [["claude", "plugin", "marketplace", "add", source, "--scope", scope],
                 ["claude", "plugin", "install", "kanban@agentic-kit", "--scope", scope]]
@@ -214,6 +236,13 @@ class Installer:
             self.report.append((("ok: " if res.returncode == 0 else f"FAILED ({res.returncode}): ")
                                 + " ".join(cmd[1:4]), out[-1] if out else ""))
 
+    def kanban_app(self) -> None:
+        """Explicit-only component (--only kanban-app): builds and copies the app; nothing goes into the project."""
+        self.app_ok = build_kanban_app(self.dry)
+        self.report.append((("run: shown above (dry run)" if self.dry else "ok: built and copied to ~/Applications")
+                            if self.app_ok else "FAILED: see the Kanban desktop app notes above",
+                            "kanban-app"))
+
     def licences(self) -> None:
         self.put_tree(KIT / "LICENSES", ".claude/agentic-kit/LICENSES")
 
@@ -222,10 +251,91 @@ class Installer:
             return
         self.manifest.update({"kit": str(KIT), "kit_version": kit_version(),
                               "installed_at": dt.datetime.now().isoformat(timespec="seconds"),
-                              "components": sorted(set(self.manifest.get("components", [])) | set(components))})
+                              "components": sorted((set(self.manifest.get("components", [])) | set(components))
+                                                   - EXPLICIT_ONLY)})
         path = self.target / MANIFEST
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(self.manifest, indent=1, sort_keys=True) + "\n")
+
+
+def add_permissions(settings: dict, rules: dict) -> dict:
+    """Append the missing `deny`/`ask` rules to settings["permissions"] (in place); returns settings."""
+    perms = settings.setdefault("permissions", {})
+    for key in ("deny", "ask"):
+        if rules.get(key):
+            have = perms.setdefault(key, [])
+            have += [r for r in rules[key] if r not in have]
+    return settings
+
+
+def find_tool(name: str) -> str | None:
+    """`shutil.which`, also looking in ~/.cargo/bin (what `source ~/.cargo/env` would add to PATH)."""
+    return shutil.which(name) or shutil.which(name, path=str(Path.home() / ".cargo/bin"))
+
+
+def cargo_env(cargo: str) -> dict:
+    env = dict(os.environ)
+    env["PATH"] = os.pathsep.join([str(Path(cargo).parent), env.get("PATH", "")])
+    return env
+
+
+def app_prereqs() -> tuple[str | None, list[str]]:
+    """(cargo path or None, the list of missing prerequisites: keys of APP_HINTS)."""
+    missing = []
+    cargo = find_tool("cargo")
+    if not cargo:
+        missing += ["cargo", "tauri"]
+    else:
+        try:
+            ok = subprocess.run([cargo, "tauri", "--version"], capture_output=True, text=True, timeout=60,
+                                env=cargo_env(cargo)).returncode == 0
+        except (OSError, subprocess.TimeoutExpired):
+            ok = False
+        if not ok:
+            missing.append("tauri")
+    xcode = shutil.which("xcode-select")
+    try:
+        has_clt = bool(xcode) and subprocess.run([xcode, "-p"], capture_output=True, timeout=30).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        has_clt = False
+    if not has_clt:
+        missing.append("xcode")
+    return cargo, missing
+
+
+def build_kanban_app(dry: bool) -> bool:
+    """Build Kanban.app from the kit's source and copy it to ~/Applications (replacing an existing copy).
+
+    Returns False when a prerequisite is missing or a step fails. Never downloads or runs remote scripts: missing
+    tools are reported with the commands for the user to run."""
+    dest = Path.home() / "Applications" / "Kanban.app"
+    build = ["cargo", "tauri", "build", "--bundles", "app"]
+    print("Kanban desktop app:")
+    print(f"  1. (cd {APP_DIR} && {' '.join(build)})")
+    print(f"  2. copy {APP_BUNDLE} -> {dest} (replaces an existing copy)")
+    cargo, missing = app_prereqs()
+    if sys.platform != "darwin":
+        print("  The Kanban app is macOS only.")
+        return dry
+    if missing:
+        print(("  Note (dry run): missing" if dry else "  Missing") + " prerequisites; install them, then re-run:")
+        for key in missing:
+            print(f"    - {APP_HINTS[key]}")
+        return dry
+    if dry:
+        print("  Dry run: nothing built or copied.")
+        return True
+    print("  Building (a first build takes a few minutes) …", flush=True)
+    res = subprocess.run([cargo, *build[1:]], cwd=APP_DIR, env=cargo_env(cargo))
+    if res.returncode != 0 or not APP_BUNDLE.is_dir():
+        print(f"  FAILED: cargo tauri build exited {res.returncode}; see the output above.")
+        return False
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.exists():
+        shutil.rmtree(dest)
+    shutil.copytree(APP_BUNDLE, dest, symlinks=True)
+    print(f"  Installed {dest}. Open it from ~/Applications (it starts the board daemon if needed).")
+    return True
 
 
 def marketplace_source() -> str:
@@ -245,6 +355,8 @@ def ask_components() -> list[str]:
     print("Which parts do you want? (Enter = the default shown in brackets)\n")
     chosen = []
     for key, text in COMPONENTS.items():
+        if key in EXPLICIT_ONLY:
+            continue
         default = key in DEFAULT_ON
         reply = input(f"  {key:<12} {text}\n  install? [{'Y/n' if default else 'y/N'}] ").strip().lower()
         if (reply in ("y", "yes")) or (reply == "" and default):
@@ -269,6 +381,12 @@ def main() -> int:
         for key, text in COMPONENTS.items():
             print(f"{key:<12} {text}")
         return 0
+    only = [c.strip() for c in (args.only or "").split(",") if c.strip()]
+    unknown = [c for c in only if c not in COMPONENTS]
+    if unknown:
+        ap.error(f"unknown component(s): {', '.join(unknown)}")
+    if only and set(only) <= EXPLICIT_ONLY and not args.target:  # the app needs no project folder
+        return 0 if build_kanban_app(args.dry_run) else 1
     if not args.target:
         ap.error("target project folder is required")
     target = Path(args.target).expanduser().resolve()
@@ -278,15 +396,13 @@ def main() -> int:
         ap.error("the target is the kit itself")
 
     manifest_path = target / MANIFEST
-    if args.only:
-        components = [c.strip() for c in args.only.split(",") if c.strip()]
-        unknown = [c for c in components if c not in COMPONENTS]
-        if unknown:
-            ap.error(f"unknown component(s): {', '.join(unknown)}")
+    if only:
+        components = only
     elif args.all:
-        components = list(COMPONENTS)
+        components = [c for c in COMPONENTS if c not in EXPLICIT_ONLY]
     elif args.update and manifest_path.exists():
-        components = json.loads(manifest_path.read_text()).get("components", DEFAULT_ON)
+        components = [c for c in json.loads(manifest_path.read_text()).get("components", DEFAULT_ON)
+                      if c not in EXPLICIT_ONLY]
     elif args.yes or not sys.stdin.isatty():
         components = DEFAULT_ON
     else:
@@ -303,8 +419,8 @@ def main() -> int:
         if comp == "kanban":
             inst.kanban(args.kanban_scope)
         else:
-            getattr(inst, comp)()
-    if any(c != "kanban" for c in components):
+            getattr(inst, comp.replace("-", "_"))()
+    if any(c not in NOT_FILES for c in components):
         inst.licences()
     inst.save_manifest(components)
 
@@ -323,7 +439,7 @@ def main() -> int:
                   " bash .claude/hooks/test_guard_bash.sh")
         print("  - Fill the placeholders: grep -rn '<your ' CLAUDE.md .claude .SDD")
         print("  - Start Claude Code in the project root (restart it if it was running).")
-    return 0
+    return 0 if inst.app_ok else 1
 
 
 if __name__ == "__main__":

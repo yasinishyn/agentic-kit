@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Kanban</title>
+<link rel="stylesheet" href="/ui/board.css">
+<script src="/ui/board.js" defer></script>
+<script src="/ui/app.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#board">Skip to the board</a>
+<header class="top">
+  <h1>Kanban</h1>
+  <label class="project-pick">
+    <span class="sr-only">Project</span>
+    <select id="project" aria-label="Project"></select>
+  </label>
+  <span id="status" class="muted" role="status"></span>
+  <span class="muted hint">Tickets are <code>.SDD/specs/&lt;slug&gt;/README.md</code> · drag a card or use ← / →</span>
+</header>
+<div id="live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+<div id="auth" class="notice" hidden>
+  <p>This board needs its access token. Open it with <code>python3 &lt;plugin&gt;/scripts/daemon.py --open</code>
+     (or from the Kanban app).</p>
+</div>
+<main id="board" class="board" aria-label="Board" tabindex="-1"></main>
+<aside id="drawer" class="drawer" hidden aria-labelledby="drawer-title">
+  <header class="drawer-head">
+    <h2 id="drawer-title"></h2>
+    <button type="button" id="drawer-close" aria-label="Close details">Close</button>
+  </header>
+  <div id="drawer-body" class="drawer-body"></div>
+</aside>
+</body>
+</html>

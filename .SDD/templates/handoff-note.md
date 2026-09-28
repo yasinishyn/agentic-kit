@@ -8,6 +8,7 @@
 
 ## Evidence
 - Tests: … (verbatim counts)
+- Happy flows: <flow → pass/fail>; stand-up: `<command>`; tear-down: `<command>`
 - QA report / Demo / E2E: links
 
 ## Migrations

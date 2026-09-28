@@ -1,6 +1,6 @@
 ---
 title: PRD-08 - Installer, guard rules, docs and v0.3.0
-status: todo
+status: done
 updated: 2026-09-28
 ---
 
@@ -17,13 +17,13 @@ updated: 2026-09-28
 Ship v0.3: explicit installer component that builds the app locally, guard rules protecting the UI token and approval endpoints, permission prompt for `kanban_approve`, docs, version bump.
 
 ## Acceptance criteria
-- [ ] `install.py --only kanban-app` only (not in defaults, `--all`, the manifest or `--update`): checks `cargo`, `cargo tauri --version`, Xcode CLT; prints install commands for anything missing; builds and copies `Kanban.app` to `~/Applications`; `--dry-run` prints commands; dispatch works for the hyphenated name
-- [ ] Guard (`.claude/hooks/guard_bash.py`): deny reading `…/Kanban/ui.token` and HTTP requests from Bash to `127.0.0.1`/`localhost` paths matching `/api/.*(approve|move|file|runs)`; tests added
-- [ ] Installer adds `mcp__plugin_kanban_kanban__kanban_approve` to `permissions.ask` and `Read(~/Library/Application Support/Kanban/ui.token)` to `permissions.deny` in the project settings it manages (the Bash guard does not cover the Read tool)
-- [ ] `plugin.json` 0.3.0; marketplace entry updated
-- [ ] `plugins/kanban/README.md`: app, daemon, tokens, hand-off (channels flag, Code-tab limitation, headless fallback), live indicator, approval rules, settings table, hooks
-- [ ] Plugin README notes that deleting the DB drops board approval records, so tickets in execution need re-approval
-- [ ] Root `README.md`: components, update section, board approval counts as SDD approval
+- [x] `install.py --only kanban-app` only (not in defaults, `--all`, the manifest or `--update`): checks `cargo`, `cargo tauri --version`, Xcode CLT; prints install commands for anything missing; builds and copies `Kanban.app` to `~/Applications`; `--dry-run` prints commands; dispatch works for the hyphenated name
+- [x] Guard (`.claude/hooks/guard_bash.py`): deny reading `…/Kanban/ui.token` and HTTP requests from Bash to `127.0.0.1`/`localhost` paths matching `/api/.*(approve|move|file|runs)`; tests added
+- [x] Installer adds `mcp__plugin_kanban_kanban__kanban_approve` to `permissions.ask` and `Read(~/Library/Application Support/Kanban/ui.token)` to `permissions.deny` in the project settings it manages (the Bash guard does not cover the Read tool)
+- [x] `plugin.json` 0.3.0; marketplace entry updated
+- [x] `plugins/kanban/README.md`: app, daemon, tokens, hand-off (channels flag, Code-tab limitation, headless fallback), live indicator, approval rules, settings table, hooks
+- [x] Plugin README notes that deleting the DB drops board approval records, so tickets in execution need re-approval
+- [x] Root `README.md`: components, update section, board approval counts as SDD approval
 
 ## Owned files (only these may change)
 - `install.py`

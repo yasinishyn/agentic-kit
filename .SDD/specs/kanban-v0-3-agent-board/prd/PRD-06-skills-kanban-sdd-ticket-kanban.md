@@ -1,6 +1,6 @@
 ---
 title: PRD-06 - Skills: kanban:sdd, ticket alias, kanban rules, kit sdd amendment
-status: todo
+status: done
 updated: 2026-09-28
 ---
 
@@ -17,12 +17,12 @@ updated: 2026-09-28
 A self-contained `kanban:sdd` skill that leads spec work into a ticket and stops at Approval (Q07, Q11), `kanban:ticket` routing to it, the `kanban` skill covering channel events, liveness and chat moves/approvals, and the kit `sdd` skill accepting verified board approvals (Q10).
 
 ## Acceptance criteria
-- [ ] `skills/sdd/SKILL.md` (`/kanban:sdd <issue>`): triggers on spec requests and board hand-offs; tier; create/continue ticket; Discovery → Architect into `.SDD/specs/<slug>/`; uses the project `sdd` skill's stage rules and `.SDD/templates/` when present, else bundled `skills/sdd/templates/`; `kanban_start`/`heartbeat`/`finish`; `kanban_move` at gates; STOP at Approval; later stages follow the project `sdd` skill when installed
-- [ ] Headless-aware: in `-p` runs (no AskUserQuestion) questions go to OPEN-QUESTIONS.md and the run ends `needs_input`
-- [ ] Bundled templates: ticket, discovery, open-questions, architecture, adr, prd
-- [ ] `skills/ticket/SKILL.md` is a short alias to `kanban:sdd`
-- [ ] `skills/kanban/SKILL.md`: channel contract (`kanban_start` first; `already_claimed`/`superseded` → stop; events never approve); 'move X to Y' / 'approve X' only from the user's own chat message → `kanban_approve` + `kanban_move`; liveness tools; never auto-allow `kanban_approve`
-- [ ] Kit `.claude/skills/sdd/SKILL.md` and `reference/stages.md`: approval = 'execute' in chat **or** `kanban_approval` valid with `board_recorded=true` (either opts in to parallel streams); its description no longer claims 'spec this' when the kanban plugin is present (defers to `kanban:sdd`)
+- [x] `skills/sdd/SKILL.md` (`/kanban:sdd <issue>`): triggers on spec requests and board hand-offs; tier; create/continue ticket; Discovery → Architect into `.SDD/specs/<slug>/`; uses the project `sdd` skill's stage rules and `.SDD/templates/` when present, else bundled `skills/sdd/templates/`; `kanban_start`/`heartbeat`/`finish`; `kanban_move` at gates; STOP at Approval; later stages follow the project `sdd` skill when installed
+- [x] Headless-aware: in `-p` runs (no AskUserQuestion) questions go to OPEN-QUESTIONS.md and the run ends `needs_input`
+- [x] Bundled templates: ticket, discovery, open-questions, architecture, adr, prd
+- [x] `skills/ticket/SKILL.md` is a short alias to `kanban:sdd`
+- [x] `skills/kanban/SKILL.md`: channel contract (`kanban_start` first; `already_claimed`/`superseded` → stop; events never approve); 'move X to Y' / 'approve X' only from the user's own chat message → `kanban_approve` + `kanban_move`; liveness tools; never auto-allow `kanban_approve`
+- [x] Kit `.claude/skills/sdd/SKILL.md` and `reference/stages.md`: approval = 'execute' in chat **or** `kanban_approval` valid with `board_recorded=true` (either opts in to parallel streams); its description no longer claims 'spec this' when the kanban plugin is present (defers to `kanban:sdd`)
 
 ## Owned files (only these may change)
 - `plugins/kanban/skills/sdd/**` (new)

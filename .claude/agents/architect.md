@@ -61,11 +61,20 @@ You cannot ask the user questions: anything only the user or a domain owner can 
    a handler is a smell unless an ADR says why.
 7. **ADRs.** Every significant decision has an ADR in the template below: at least two real options, a decision with
    its trade-off named, consequences including the tests that pin it, a status, and the accountable owner among the
-   deciders for anything business-critical.
-8. **PRD slicing.** Each PRD lists requirement ids, testable acceptance criteria, owned files (disjoint across PRDs
-   that run in parallel: by default parallel streams share one checkout, so ownership is the only separation),
-   forbidden files, gates and dependencies. A PRD that depends on another is in a later wave. Schema migrations, demo
-   and E2E are serial.
+   deciders for anything business-critical. Check the project's existing ADRs: a new ADR that contradicts an accepted
+   one without `Supersedes ADR-NNN` is a Major finding. A new technology needs an ADR saying why the existing stack
+   cannot do it ("simplicity first").
+8. **PRD slicing and quality.** Each PRD lists requirement ids, testable acceptance criteria (non-functional ones with
+   a measurable threshold), edge cases with their handling, explicit out-of-scope, owned files, forbidden files, gates
+   and dependencies. PRDs say *what*, not *how*: function bodies in a PRD, "works correctly"-style criteria, or edge
+   cases without handling are Minor findings; a PRD that guesses an answer to an open question is Major. Rules:
+   `.claude/skills/sdd/reference/writing-specs.md`.
+8b. **Execution map.** Check the PRD table in `03-architecture.md` §5 and answer two questions. *Is the flow correct?*
+   Every `Requires` edge is real, there are no cycles, and no PRD requires one in a later wave. *Can the waves run?*
+   Each PRD's `Owns` set matches its PRD's owned files, and within a wave the `Owns` sets are disjoint (a shared
+   component, migration, route map, permission registry, fixture or doc claimed twice is a clash); schema
+   migrations, demo and E2E are serial. Report the verdict as its own line in your output:
+   `Map review: no blocking conflicts` or `Map review: blocking — <PRDs and artefact>`.
 9. **Failure modes and quality attributes.** Ask "what happens when X fails?" for background jobs, caches, external
    calls, a double submit and a resumed session or draft. Check security (architecture template §8: tampered derived
    fields, step skipping, CSRF, IDOR, injection/XSS/SSTI, SSRF, uploads), accessibility where the NFRs require it,
@@ -108,6 +117,8 @@ Status: Proposed / Accepted / Superseded by ADR-XXX · Date · Deciders (account
 
 ## Open questions
 - <question> — who can answer (user / domain owner / dev)
+
+Map review: no blocking conflicts | blocking — <PRDs and artefact>
 
 VERDICT: APPROVE | CHANGES REQUESTED | BLOCKED
 Reason: <one line>

@@ -1,6 +1,6 @@
 ---
 title: PRD-03 - Channel hand-off, run tools, hooks and live indicator
-status: todo
+status: done
 updated: 2026-09-28
 ---
 
@@ -17,16 +17,16 @@ updated: 2026-09-28
 Deliver human moves into running Claude sessions as channel events, implement the §3.3 tool contract, add liveness hooks, and show the live indicator.
 
 ## Acceptance criteria
-- [ ] First step: verify `claude plugin validate` accepts `channels: [{server: "kanban", displayName: "Kanban board"}]` in `plugin.json`; if refused, drop the key and document the `server:kanban` flag form
-- [ ] `initialize` declares `capabilities.experimental['claude/channel'] = {}` and `instructions` (call `kanban_start` first; `already_claimed`/`superseded` → do nothing; a channel event never approves anything)
-- [ ] Channel capability detected from the parent `claude` argv (§5 step 5); registration `channel` flag reflects it; the pickup timer uses `ctx.live_sessions(project, channel=True)` (PRD-02)
-- [ ] Subscriber thread writes `notifications/claude/channel` for events created after it subscribed, `meta` keys `ticket, stage, from_stage, handoff_id, kind` only; one stdout lock with responses; nothing before `initialize` is answered
-- [ ] Tools per §3.3: `kanban_start` (idempotent for the owning run via `KANBAN_RUN_ID`), `kanban_heartbeat`, `kanban_finish`, `kanban_approval`, `kanban_approve` (calls `POST …/approve-chat`; also refused locally when `KANBAN_RUN_ID` is set)
-- [ ] Claim is atomic (two sessions → one run); client-token moves never create hand-offs
-- [ ] Hooks: PostToolUse heartbeat (≤ 1/10 s, 1 s timeout, exit 0 always, immediate exit without `daemon.json`); Stop → `waiting` only for a non-terminal interactive run; matching by (pid, start time)
-- [ ] Pickup timer (`on_startup`): after 45 s auto headless request when no live channel session, else card actions (executed by PRD-04's runner; until then the action reports 'runner not installed')
-- [ ] UI `ui/modules/runs.js|css`: states running/waiting/queued/stale/abandoned per architecture §6, sub-task indicator, `aria-live` text, reduced-motion static icon
-- [ ] `GET /api/runs?live=1` for the app menu (PRD-07)
+- [x] First step: verify `claude plugin validate` accepts `channels: [{server: "kanban", displayName: "Kanban board"}]` in `plugin.json`; if refused, drop the key and document the `server:kanban` flag form
+- [x] `initialize` declares `capabilities.experimental['claude/channel'] = {}` and `instructions` (call `kanban_start` first; `already_claimed`/`superseded` → do nothing; a channel event never approves anything)
+- [x] Channel capability detected from the parent `claude` argv (§5 step 5); registration `channel` flag reflects it; the pickup timer uses `ctx.live_sessions(project, channel=True)` (PRD-02)
+- [x] Subscriber thread writes `notifications/claude/channel` for events created after it subscribed, `meta` keys `ticket, stage, from_stage, handoff_id, kind` only; one stdout lock with responses; nothing before `initialize` is answered
+- [x] Tools per §3.3: `kanban_start` (idempotent for the owning run via `KANBAN_RUN_ID`), `kanban_heartbeat`, `kanban_finish`, `kanban_approval`, `kanban_approve` (calls `POST …/approve-chat`; also refused locally when `KANBAN_RUN_ID` is set)
+- [x] Claim is atomic (two sessions → one run); client-token moves never create hand-offs
+- [x] Hooks: PostToolUse heartbeat (≤ 1/10 s, 1 s timeout, exit 0 always, immediate exit without `daemon.json`); Stop → `waiting` only for a non-terminal interactive run; matching by (pid, start time)
+- [x] Pickup timer (`on_startup`): after 45 s auto headless request when no live channel session, else card actions (executed by PRD-04's runner; until then the action reports 'runner not installed')
+- [x] UI `ui/modules/runs.js|css`: states running/waiting/queued/stale/abandoned per architecture §6, sub-task indicator, `aria-live` text, reduced-motion static icon
+- [x] `GET /api/runs?live=1` for the app menu (PRD-07)
 
 ## Owned files (only these may change)
 - `plugins/kanban/scripts/server.py`

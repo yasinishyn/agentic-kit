@@ -1,6 +1,6 @@
 ---
 title: PRD-04 - Headless runner, transcript and Stop
-status: todo
+status: done
 updated: 2026-09-28
 ---
 
@@ -17,12 +17,12 @@ updated: 2026-09-28
 Run Claude headless when no session picks a hand-off up, stream its transcript to the board, keep the session id per ticket, surface permission denials, and allow Stop.
 
 ## Acceptance criteria
-- [ ] argv exactly `claude -p <headless_prompt> --output-format stream-json --verbose --permission-mode acceptEdits` (+ `--resume <id>` when stored); never `--dangerously-skip-permissions`; cwd = project root
-- [ ] Child env from the allow-list in architecture §5 step 7 (`CLAUDE_PROJECT_DIR=<root>`, `KANBAN_RUN_ID`, `KANBAN_HANDOFF_ID`; no inherited `CLAUDECODE` or other `CLAUDE_*`); `claude` resolved via login shell then known paths, clear failure if missing
-- [ ] stream-json → `run_events`; `system/init.session_id` → `ticket_sessions`; resume failure → one retry without `--resume`; `result.permission_denials` → events + card badge
-- [ ] Exit 0 → succeeded, else failed; Stop → SIGTERM, 5 s, SIGKILL on the process group → cancelled; `on_startup` marks orphaned runs failed; requeue of coalesced hand-offs on finish
-- [ ] `KANBAN_MAX_RUNS` (4) concurrent; one live run per ticket
-- [ ] `ui/modules/transcript.js` renders events with `textContent` only, paged by `afterSeq`, live via the event stream; Stop button (UI token); 'Run headless' action wired in `runs.js`; transcripts retained 30 days
+- [x] argv exactly `claude -p <headless_prompt> --output-format stream-json --verbose --permission-mode acceptEdits` (+ `--resume <id>` when stored); never `--dangerously-skip-permissions`; cwd = project root
+- [x] Child env from the allow-list in architecture §5 step 7 (`CLAUDE_PROJECT_DIR=<root>`, `KANBAN_RUN_ID`, `KANBAN_HANDOFF_ID`; no inherited `CLAUDECODE` or other `CLAUDE_*`); `claude` resolved via login shell then known paths, clear failure if missing
+- [x] stream-json → `run_events`; `system/init.session_id` → `ticket_sessions`; resume failure → one retry without `--resume`; `result.permission_denials` → events + card badge
+- [x] Exit 0 → succeeded, else failed; Stop → SIGTERM, 5 s, SIGKILL on the process group → cancelled; `on_startup` marks orphaned runs failed; requeue of coalesced hand-offs on finish
+- [x] `KANBAN_MAX_RUNS` (4) concurrent; one live run per ticket
+- [x] `ui/modules/transcript.js` renders events with `textContent` only, paged by `afterSeq`, live via the event stream; Stop button (UI token); 'Run headless' action wired in `runs.js`; transcripts retained 30 days
 
 ## Owned files (only these may change)
 - `plugins/kanban/scripts/runner.py` (new)

@@ -26,6 +26,12 @@
 |---|---|
 | <SLUG>-NFR-01 | … |
 
+## 4b. Constraints and success criteria
+- Constraints: <systems, contracts or limits that cannot change>
+- Success criteria: <testable metrics or observable outcomes — not uncontrollable business results>
+
+Requirements describe what users and systems experience, not how it is built (see the sdd skill's `writing-specs.md`).
+
 ## 5. Existing capabilities to reuse
 <Modules, components, templates, helpers — with paths.>
 

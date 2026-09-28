@@ -53,7 +53,8 @@ cannot ask the user.
 2. **Tests (Bash).** Run the targeted tests and the full suite with the project's test command, and quote the final
    lines verbatim. Use absolute paths (`<repo>` is the checkout under test), because the Bash working
    directory resets between calls. Open each mapped test and confirm it asserts the requirement with literal expected
-   values, not a mock.
+   values, not a mock. If the working tree changes an existing test, check it was not weakened (an assertion removed,
+   an expected value loosened, a case skipped) to make a fix pass; a weakened test is a High issue.
 3. **Code and scope.** Read the implementation (`path:line`). Review the working tree: run
    `git -C <repo> status --porcelain --untracked-files=all` and `git -C <repo> diff HEAD --stat -- <owned>` (staged and
    unstaged), and compare with the PRD's owned files; changes outside them are an issue. With a commit range, use
@@ -68,7 +69,9 @@ cannot ask the user.
    - Check layouts with `resize_window` (`mobile`, `tablet`, then `desktop` to reset).
    - `read_console_messages` (errors) and `read_network_requests` (4xx/5xx, any request to a non-local host).
 5. **Cross-check prior claims** one by one: confirmed, refuted or not verified, each with your evidence.
-6. **Judge** each requirement PASS / FAIL / NOT VERIFIED and assign issue severities.
+6. **Judge** each requirement PASS / FAIL / NOT VERIFIED and assign issue severities: **Critical** blocks core
+   functionality with no workaround; **High** a major function is broken, a workaround exists; **Medium** partly works,
+   minor impact; **Low** cosmetic.
 
 **Always NEEDS WORK when:** any requirement FAILs or is NOT VERIFIED; the full suite was not run in this session or
 is not green; files changed outside the owned list; console errors or 5xx responses on the journey; a business-critical

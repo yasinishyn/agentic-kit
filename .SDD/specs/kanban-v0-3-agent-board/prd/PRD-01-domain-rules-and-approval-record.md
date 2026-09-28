@@ -1,6 +1,6 @@
 ---
 title: PRD-01 - Domain rules, transition guard and approval record
-status: todo
+status: done
 updated: 2026-09-28
 ---
 
@@ -17,15 +17,15 @@ updated: 2026-09-28
 Pure decision functions every later slice uses (architecture §2), and a markdown store in which no caller can put a ticket into Developer or later without a recorded approval.
 
 ## Acceptance criteria
-- [ ] `transition_allowed(src, dst, approval)` implements §2 / Q09 literally: entering developer/qa/demo/e2e/done from discovery/architect/approval needs a valid approval; moves inside that set need an approval record; backward moves always allowed
-- [ ] `move_ticket` is the only README stage writer and calls `transition_allowed`; errors say `approval required` or `spec changed since approval`
-- [ ] `set_status` refuses a ticket README (`use kanban_move`); status and stage enums validated server-side for every entry point
-- [ ] `handoff_kind(src, dst, actor)` returns the §2 table (only actor `human (board)` produces kinds; `start` forward into WORKING; `rework` backward into WORKING; none for approval/done/same stage)
-- [ ] `spec_hash` covers 01-*, 02-*, 03-*, adr/*, prd/*, OPEN-QUESTIONS.md with the §2 normalisation: equal after `approve()`, equal after ticking any checkbox or changing `status`/`updated`, different after any text edit
-- [ ] `approve(root, ticket, actor)` writes `approved_by/at/hash` and the approval line under the 03-architecture.md header (README only when no 03-*); re-approval replaces, never duplicates
-- [ ] `view_state` → `stale` past TTL for running/waiting; terminal states unchanged
-- [ ] `channel_event(handoff)` and `headless_prompt(handoff)` contain slug and stage names only; slug regex enforced; the developer hand-off text tells Claude to verify with `kanban_approval`
-- [ ] Existing `test_kanban.py` cases that skip Approval (lines 64, 195) are updated to approve first; all other existing tests unchanged and green
+- [x] `transition_allowed(src, dst, approval)` implements §2 / Q09 literally: entering developer/qa/demo/e2e/done from discovery/architect/approval needs a valid approval; moves inside that set need an approval record; backward moves always allowed
+- [x] `move_ticket` is the only README stage writer and calls `transition_allowed`; errors say `approval required` or `spec changed since approval`
+- [x] `set_status` refuses a ticket README (`use kanban_move`); status and stage enums validated server-side for every entry point
+- [x] `handoff_kind(src, dst, actor)` returns the §2 table (only actor `human (board)` produces kinds; `start` forward into WORKING; `rework` backward into WORKING; none for approval/done/same stage)
+- [x] `spec_hash` covers 01-*, 02-*, 03-*, adr/*, prd/*, OPEN-QUESTIONS.md with the §2 normalisation: equal after `approve()`, equal after ticking any checkbox or changing `status`/`updated`, different after any text edit
+- [x] `approve(root, ticket, actor)` writes `approved_by/at/hash` and the approval line under the 03-architecture.md header (README only when no 03-*); re-approval replaces, never duplicates
+- [x] `view_state` → `stale` past TTL for running/waiting; terminal states unchanged
+- [x] `channel_event(handoff)` and `headless_prompt(handoff)` contain slug and stage names only; slug regex enforced; the developer hand-off text tells Claude to verify with `kanban_approval`
+- [x] Existing `test_kanban.py` cases that skip Approval (lines 64, 195) are updated to approve first; all other existing tests unchanged and green
 
 ## Owned files (only these may change)
 - `plugins/kanban/scripts/kanban_rules.py` (new)

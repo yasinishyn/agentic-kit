@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Spec slug | `kanban-v0-3-agent-board` |
-| Branch | `main` (the developer creates a feature branch, e.g. `feature/kanban-v0-3`) |
+| Branch | `main` (single-developer repo; no feature branch) |
 | Requested by / date | kit owner, 2026-09-28 |
 | Tier | Full ADLC — a new desktop application with an embedded database, an integration that pushes work into Claude Code sessions (channels + headless runs), an embedded terminal (process execution), and a changed approval mechanism |
 | Status | Agreed 2026-09-28 (kit owner); amended in Architect by Q09–Q13 (see OPEN-QUESTIONS.md) |

@@ -4,7 +4,8 @@
 |---|---|
 | Spec | `kanban-v0-3-agent-board` · [01-discovery.md](01-discovery.md) (Agreed 2026-09-28) |
 | Tier | Full |
-| Status | Draft rev 2 (architect review 1: CHANGES REQUESTED, findings addressed below) — waiting for the user's approval ("execute") |
+| Status | Rev 2 (architect reviews 1–2 addressed, §12) |
+| Approval | Approved for execution by the user in chat on 2026-09-28 (includes the parallel-streams opt-in) |
 
 ## 1. Bounded context
 **SDD work tracking on the developer's machine.** The *spec* (ticket README, discovery, architecture, ADRs, PRDs,
@@ -36,13 +37,13 @@ record) is written to markdown; everything ephemeral lives in SQLite.
 | Concept | Rule (pure) | Enforced in |
 |---|---|---|
 | **Stage** | `STAGES` unchanged. `WORKING = {discovery, architect, developer, qa, demo, e2e}`. `EXECUTION = {developer, qa, demo, e2e, done}` | domain |
-| **Transition** | `transition_allowed(src, dst, approval)` → ok \| `approval_required` \| `spec_changed`. Rule (Q09): entering `EXECUTION` from a stage outside it needs a **valid** approval (hash matches); moves inside `EXECUTION` need an approval **record** (any hash; a changed spec is a warning badge, not a block); backward moves are always allowed | `kanban_md.move_ticket` (the only writer of a README stage). `set_status` refuses README files (use `kanban_move`); every tool validates enums server-side |
+| **Transition** | `transition_allowed(src, dst, approval)` → ok \| `approval_required` \| `spec_changed`. Rule (Q09 as amended by Q14): entering `EXECUTION` from a stage outside it needs a **valid** approval (hash matches); moves inside `EXECUTION` are always allowed (a missing record shows an "approved before v0.3" badge, a changed spec a warning badge); backward moves are always allowed | `kanban_md.move_ticket` (the only writer of a README stage). `set_status` refuses README files (use `kanban_move`); every tool validates enums server-side |
 | **Hand-off kind** | `handoff_kind(src, dst, actor)` → `None` unless actor is `human (board)`; `"start"` for forward moves into `WORKING`; `"rework"` for backward moves into `WORKING`; `None` for `approval`/`done` targets and same stage (Q05) | daemon human-move handler |
 | **Spec hash** | `spec_hash(files)` = sha256 over the sorted normalised contents of `01-*.md`, `02-*.md`, `03-*.md`, `adr/*.md`, `prd/*.md`, `OPEN-QUESTIONS.md` (README excluded). Normalise: drop frontmatter keys `status`, `updated`, `approved_by`, `approved_at`, `approved_hash`; drop lines starting `Approved for execution by `; render every checkbox as unchecked. So approving and ticking boxes never change the hash; editing text does | domain |
 | **Approval** | `approval_record(fields)`; `approval_valid(fields, current_hash)`; approval text line `Approved for execution by <actor> on <YYYY-MM-DD> (spec <hash12>)` | `kanban_md.approve` |
 | **Actors** | literals `human (board)`, `human (chat)`, `claude`, `runner` | server-side only; never taken from the request body |
 | **Hand-off lifecycle** | `queued → delivered → claimed → done`; `coalesced` (target equals the live run's stage); `superseded` (a newer human move on the same ticket); `requeued` when a finished run has a pending coalesced hand-off with a different target | daemon + `kanban_db` |
-| **Run state** | `queued → running ⇄ waiting → succeeded \| failed \| cancelled \| abandoned`. Terminal states are **sticky** (no transition out). `view_state(run, now, ttl)` → `stale` for running/waiting past TTL | `kanban_db` transition function, tested |
+| **Run state** | `queued → running ⇄ waiting → succeeded \| failed \| cancelled \| abandoned`. Terminal states are **sticky** (no transition out). `kanban_finish(outcome=needs_input)` is **not** terminal: the run goes to `waiting` with the summary as its reason and keeps the ticket (one live run per ticket) until activity resumes it or, for headless runs, the process exits (decided in Developer, PRD-03, 2026-09-28). A headless run whose process exits while `waiting` is closed as `succeeded` but keeps a `needs_input` flag and its summary; the card shows an amber "needs input" badge with the summary until the ticket is moved or a new run starts (decided by the kit owner, 2026-09-28). `view_state(run, now, ttl)` → `stale` for running/waiting past TTL | `kanban_db` transition function, tested |
 | **Claim** | `kanban_start(handoff_id)`: first claim wins; the run that already owns the claim (same `run_id`) gets `ok` (idempotent); others `already_claimed`; superseded → `superseded` | SQLite `BEGIN IMMEDIATE` + partial unique index `runs(project_id, ticket) WHERE status IN ('queued','running','waiting')` |
 
 ## 3. Components

@@ -17,6 +17,12 @@ bypassed with `git -C x push`, `bash -c "…"` etc.; the hook parses the command
 | GitHub PR/release/repo writes | `gh pr create`, `gh pr merge`, `gh release create` |
 | Non-local DB clients | `psql -h remote…`, `psql postgresql://…@remote/…`, `pg_dump --host=remote` |
 | Credential files | `cat ~/.aws/credentials`, `cat ~/.ssh/…`, `source .env`, `cat .env.production` (`.env.example`/`.template`/`.sample` are fine) |
+| The kanban board's UI token (human-only) | Any command naming `…/Kanban/ui.token`, `$KANBAN_HOME/ui.token` or `…/kanban/ui.token` (`cat`, `head`, `python3 -c "open(…)"`, `$(cat …)`), or `cd` into a Kanban folder plus `ui.token` |
+| Human-only board endpoints | A `127.0.0.1`/`localhost` URL whose path matches `/api/.*(approve\|move\|files?\|runs)`, from `curl`, `wget`, `http` (httpie), `python -c` with `urllib`/`requests` …; read-only calls such as `/api/health` stay allowed. Claude uses the kanban MCP tools instead |
+
+The hook sees only Bash. For the Read tool, the installer also adds `Read(~/Library/Application Support/Kanban/ui.token)`
+to `permissions.deny`, and `mcp__plugin_kanban_kanban__kanban_approve` to `permissions.ask` (approving a spec from chat
+always asks you).
 
 ## Project-specific rules (CONFIG block in `guard_bash.py`)
 All lists are empty by default and additive (they can only block more):

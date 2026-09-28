@@ -1,6 +1,6 @@
 ---
 title: PRD-02 - Board daemon, SQLite store, plug-in contracts and multi-project board
-status: todo
+status: done
 updated: 2026-09-28
 ---
 
@@ -17,18 +17,19 @@ updated: 2026-09-28
 A single per-user daemon with the SQLite store, scoped-token API, streamed events and the daemon/UI plug-in contracts (architecture §3.1–3.2), serving a multi-project board with drag-and-drop; the MCP server ensure-starts it, registers, and falls back to v0.2 local mode.
 
 ## Acceptance criteria
-- [ ] `daemon.py --ensure`: flock single instance; two concurrent calls → one pid; newer version replaces an idle older daemon; stdio detached; `--stop` refuses with live runs unless `--cancel-runs`; `--open` opens the browser with the UI token in the URL fragment
-- [ ] `kanban_db.py` owns all migrations (`user_version` 1): projects, sessions, handoffs, runs (+ partial unique index for live runs per ticket), run_events, approvals, approval_files, ticket_sessions, settings; WAL, `busy_timeout`, connection per thread; run transition function with sticky terminal states; claim/coalesce/supersede/requeue accessors; deleting the DB → recreated, board still complete from markdown
-- [ ] Tokens: `client.token` and `ui.token` (0600, `KANBAN_HOME` 0700); scope matrix enforced on every `/api/*`; Host check; no CORS headers; static `/` and `/ui/*` only are unauthenticated
-- [ ] CSP exactly as architecture §8; no inline script or `on*=` attribute in `ui/`
-- [ ] Events: `GET /api/events` streamed with the Authorization header (fetch/chunked), `board.changed` within 2 s of a markdown change, `handoff.created`; max 32 subscribers
-- [ ] Human move endpoint (UI token): guarded `move_ticket`, then hand-off row per `handoff_kind` with supersede/coalesce, publish, and `on_human_move` hooks; actors set server-side
-- [ ] Approvals: `kanban_db.record_approval(project, ticket, actor)` is the single writer — `km.approve`, an `approvals` row and an `approval_files` snapshot; endpoints `POST …/approve` (UI token, actor `human (board)`) and `POST …/approve-chat` (client token, actor `human (chat)`, refused by the daemon when the calling session's kind is `headless`)
-- [ ] Live sessions: the events handler tracks open subscriptions per session; `ctx.live_sessions(project_id, channel=None)` returns them; a session is live only while its subscription is open
-- [ ] Plug-in contracts §3.1 (`register(ctx)`, `on_startup`, `on_human_move`, scopes) and §3.2 (`window.kanban` API, `/ui/modules` discovery) implemented and tested with a sample plug-in fixture
-- [ ] UI: project switcher; columns; drag-and-drop plus ← / → buttons; drawer with sub-tasks (collapsed beyond 8), files and plug-in panels; markdown viewer fetched through the API (no data navigations); 10 tickets × 50 PRDs render < 200 ms; focus visible; drag has a keyboard path; `aria-live` region for board changes
-- [ ] MCP `server.py`: `--ensure`, `POST /api/sessions {project_root, claude_pid, claude_start_time, kind}`; `KANBAN_NO_DAEMON=1` or unresolved api mismatch → v0.2 local mode + one stderr notice; `kanban_board` prints the board URL without any token
-- [ ] `tests/helpers.py`: temp `KANBAN_HOME`, `KANBAN_NO_DAEMON` and a throwaway test daemon; every kanban test uses it (no test touches the real `KANBAN_HOME`)
+- [x] `daemon.py --ensure`: flock single instance; two concurrent calls → one pid; newer version replaces an idle older daemon; stdio detached; `--stop` refuses with live runs unless `--cancel-runs`; `--open` opens the browser with the UI token in the URL fragment
+- [x] `kanban_db.py` owns all migrations (`user_version` 1): projects, sessions, handoffs, runs (+ partial unique index for live runs per ticket), run_events, approvals, approval_files, ticket_sessions, settings; WAL, `busy_timeout`, connection per thread; run transition function with sticky terminal states; claim/coalesce/supersede/requeue accessors; deleting the DB → recreated, board still complete from markdown
+- [x] Tokens: `client.token` and `ui.token` (0600, `KANBAN_HOME` 0700); scope matrix enforced on every `/api/*`; Host check; no CORS headers; static `/` and `/ui/*` only are unauthenticated
+- [x] CSP exactly as architecture §8; no inline script or `on*=` attribute in `ui/`
+- [x] Events: `GET /api/events` streamed with the Authorization header (fetch/chunked), `board.changed` within 2 s of a markdown change, `handoff.created`; max 32 subscribers
+- [x] Human move endpoint (UI token): guarded `move_ticket`, then hand-off row per `handoff_kind` with supersede/coalesce, publish, and `on_human_move` hooks; actors set server-side
+- [x] Approvals: `kanban_db.record_approval(project, ticket, actor)` is the single writer — `km.approve`, an `approvals` row and an `approval_files` snapshot; endpoints `POST …/approve` (UI token, actor `human (board)`) and `POST …/approve-chat` (client token, actor `human (chat)`, refused by the daemon when the calling session's kind is `headless`)
+- [x] Live sessions: the events handler tracks open subscriptions per session; `ctx.live_sessions(project_id, channel=None)` returns them; a session is live only while its subscription is open
+- [x] Plug-in contracts §3.1 (`register(ctx)`, `on_startup`, `on_human_move`, scopes) and §3.2 (`window.kanban` API, `/ui/modules` discovery) implemented and tested with a sample plug-in fixture
+- [x] UI: project switcher; columns; drag-and-drop plus ← / → buttons; drawer with sub-tasks (collapsed beyond 8), files and plug-in panels; markdown viewer fetched through the API (no data navigations); 10 tickets × 50 PRDs render < 200 ms; focus visible; drag has a keyboard path; `aria-live` region for board changes
+- [x] MCP `server.py`: `--ensure`, `POST /api/sessions {project_root, claude_pid, claude_start_time, kind}`; `KANBAN_NO_DAEMON=1` or unresolved api mismatch → v0.2 local mode + one stderr notice; `kanban_board` prints the board URL without any token
+- [x] Rejected requests (401/403/404) read and discard the request body before replying (fixes the pre-existing intermittent `ConnectionResetError` in `test_web_board_viewer_and_guards`, 2/20 at baseline `213d2de`, `server.py:259-261`); the suite passes 20 consecutive runs
+- [x] `tests/helpers.py`: temp `KANBAN_HOME`, `KANBAN_NO_DAEMON` and a throwaway test daemon; every kanban test uses it (no test touches the real `KANBAN_HOME`)
 
 ## Owned files (only these may change)
 - `plugins/kanban/scripts/daemon.py` (new)

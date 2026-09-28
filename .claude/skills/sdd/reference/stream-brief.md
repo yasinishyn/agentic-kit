@@ -77,14 +77,21 @@ summary line) · suggestedCommitMessage (`PRD-NN: <summary> (<FR ids>)`) · bloc
    in your own worktree, as the developer's git identity (no Claude/AI author or co-author trailer); never `git add -A`,
    `--force`, rebase, amend or push. Leave nothing uncommitted.
 9. **Evidence.** The report quotes command output verbatim. "Should pass" or "probably" is not evidence.
-10. **No sub-orchestration.** Don't spawn further agents or workflows and don't ask the user questions. Return
+10. **Build the PRD, nothing more.** No extra features, no refactoring beyond the need, no new dependency an ADR
+    didn't sanction, no edge case skipped. If implementation reveals a new decision, report it (or update the ADR if
+    you own it).
+11. **No sub-orchestration.** Don't spawn further agents or workflows and don't ask the user questions. Return
     `BLOCKED` with the exact question instead.
 
 ## Stop conditions → return `BLOCKED` (or `NEEDS_CONTEXT`)
 
 - **A domain ruling is needed** that the spec leaves open (thresholds, pricing, eligibility, regulated wording,
   routing, divergence from existing behaviour or test vectors).
-- **A change is needed outside the owned files**, or to an interface another stream relies on.
+- **A change is needed outside the owned files**, or to an interface another stream relies on
+  (`ownership-conflict`).
+- **The PRD contradicts an ADR** (`inconsistency`), **can't be built on this stack** (`technical-impossibility`),
+  **needs a library or service no ADR sanctions** (`missing-dependency`), or **asks for more than the discovery
+  agreed** (`scope-creep`). Name the type in the report.
 - **3 fix attempts have failed** on the same problem.
 - **The environment isn't usable:** resources missing, a service down, a port taken, or the base lacks the PRD.
 - **The PRD is ambiguous or contradicts an ADR.** Quote both.

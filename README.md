@@ -100,9 +100,10 @@ claude plugin install kanban@agentic-kit
 | `agents` | `architect` (independent design review), `qa-verifier` (evidence-based QA verdict) | `.claude/agents/` |
 | `guard` | A PreToolUse hook that blocks git commit/push by default (opt-in for commits as the developer), deploy scripts, the AWS CLI, non-local database clients and credential reads; deny rules added to your settings | `.claude/hooks/`, `.claude/settings.json` |
 | `instructions` | A `CLAUDE.md` template (hard rules, how we work) and a long-term memory index | `CLAUDE.md`, `.claude/memory/` |
-| `kanban` | A Claude Code plugin: a board over `.SDD/specs` (tickets = spec folders, columns = stages), MCP tools, a `ticket` kick-off skill | installed with `claude plugin …` (see below) |
+| `kanban` | A Claude Code plugin: one board over `.SDD/specs` for all your projects (tickets = spec folders, columns = stages), hand-off of board moves to Claude, live activity, MCP tools, the `kanban:sdd` skill; two permission rules added to your settings | installed with `claude plugin …` (see below), `.claude/settings.json` |
+| `kanban-app` | The Kanban desktop app (macOS), built locally with `cargo tauri`. Only with `--only kanban-app`: never by default, `--all` or `--update`; the installer checks `cargo`, the Tauri CLI and the Xcode tools and prints the install commands for anything missing | `~/Applications/Kanban.app` |
 
-All of them except `kanban` are selected by default.
+All of them except `kanban` and `kanban-app` are selected by default.
 
 ### Git policy
 
@@ -128,6 +129,7 @@ All of them except `kanban` are selected by default.
 ./install.sh <project> --update                 # after `git pull`: refresh kit files you haven't edited
 ./install.sh --list                             # list the components
 ./install.sh <project> --only kanban --kanban-scope project   # enable the plugin for everyone in that repo
+./install.sh --only kanban-app --dry-run         # the Kanban desktop app (macOS): show the build + copy commands
 ```
 
 ### What "never overwrites" means exactly
@@ -166,7 +168,8 @@ claude plugin marketplace update agentic-kit
 claude plugin update kanban@agentic-kit
 ```
 
-Then restart Claude Code.
+Then restart Claude Code. **The Kanban desktop app** is not touched by `--update`: rebuild it from the updated kit
+with `python3 install.py --only kanban-app` (it replaces the copy in `~/Applications`).
 
 
 ## The kanban plugin
@@ -179,7 +182,9 @@ A board over your `.SDD/specs` markdown:
 - **Files:** every markdown file opens from the board, in a viewer or in your editor.
 
 The markdown is the source of truth: the `sdd` skill keeps it current, and the plugin displays and edits it. A prompt
-becomes a ticket only when it produces a spec; the `ticket` skill (`/kanban:ticket <title>`) kicks off SDD for it.
+becomes a ticket only when it produces a spec; the `kanban:sdd` skill (`/kanban:sdd <title>`, alias `/kanban:ticket`)
+kicks off SDD for it. Since v0.3 one per-user daemon serves every project's board (in the Kanban desktop app or a
+browser); moving a card hands the stage to a Claude session (channels) or a headless run, and cards show who is working.
 
 **Install it** (it's a per-user Claude Code plugin; this repository is its marketplace):
 
@@ -203,7 +208,7 @@ Details: [plugins/kanban/README.md](plugins/kanban/README.md).
 
 ## Using it day to day
 
-- **Start a feature:** "spec this: …" or `/sdd …`. Claude runs Discovery and Architect, writes `.SDD/specs/<slug>/`, and **stops for your approval**. Say **"execute"** to start the build.
+- **Start a feature:** "spec this: …" or `/sdd …`. Claude runs Discovery and Architect, writes `.SDD/specs/<slug>/`, and **stops for your approval**. Say **"execute"** to start the build. With the kanban plugin, approving the ticket on the board ("Approve and execute") counts as the same SDD approval.
 - **Small fixes:** the `sdd` skill tiers them down to Developer → QA.
 - **Committing:** Claude stages its work and hands you the commit and push commands with suggested messages (see Git policy).
 - **Review agents:** Claude uses `architect` and `qa-verifier` at the Architect and QA stages. If your Claude Code doesn't register custom agents, the skill tells Claude to read `.claude/agents/<name>.md` instead.
@@ -228,7 +233,7 @@ git tag -a v0.2.0 -m "agentic-kit 0.2.0" && git push origin main v0.2.0
 
 ```bash
 python3 tests/test_install.py
-python3 plugins/kanban/tests/test_kanban.py
+python3 -m unittest discover -s plugins/kanban/tests -p 'test_*.py'
 claude plugin validate plugins/kanban && claude plugin validate .
 bash .claude/hooks/test_guard_bash.sh
 ```

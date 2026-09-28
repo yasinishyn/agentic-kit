@@ -1,0 +1,44 @@
+/* Live run indicator on cards (architecture §6): running = animated ring, waiting = amber, queued = pulsing outline,
+   stale = grey, failed/abandoned = red with the reason, cancelled = grey; permission denials = amber badge.
+   prefers-reduced-motion → static icons. Also the transcript drawer panel (transcript.js, PRD-04). */
+.run-indicator { display:flex; gap:6px; align-items:center; margin:5px 0 2px; font-size:11px; color:var(--muted); }
+.run-icon { flex:none; width:11px; height:11px; border-radius:50%; border:2px solid currentColor; box-sizing:border-box; }
+.run-text { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.run-running { color:var(--accent); }
+.run-running .run-icon { border-top-color:transparent; animation:run-spin 1s linear infinite; }
+.run-waiting { color:var(--warn); font-weight:600; }
+.run-waiting .run-icon { background:currentColor; }
+.run-queued { color:var(--accent); }
+.run-queued .run-icon { border-style:dashed; animation:run-pulse 1.6s ease-in-out infinite; }
+.run-stale { color:var(--muted); }
+.run-stale .run-icon { border-style:dotted; }
+.run-failed, .run-abandoned { color:var(--bad); }
+.run-failed .run-icon, .run-abandoned .run-icon { background:currentColor; border-radius:2px; }
+.run-cancelled { color:var(--muted); }
+.run-needs-input { color:var(--warn); font-weight:600; }
+.run-needs-input .run-icon { background:currentColor; border-radius:2px; }
+.run-needs-input .run-text { padding:0 5px; border-radius:8px; border:1px solid currentColor; }
+.run-cancelled .run-icon { border-radius:2px; }
+.run-denials { flex:none; padding:0 5px; border-radius:8px; border:1px solid var(--warn); color:var(--warn); font-weight:600; }
+.card.run-live { box-shadow:0 0 0 1px var(--accent), 0 1px 2px rgba(0,0,0,.08); }
+.card.run-card-waiting { box-shadow:0 0 0 1px var(--warn), 0 1px 2px rgba(0,0,0,.08); }
+.st.st-live .st-title::before { content:"\25CF\00A0"; color:var(--accent); }
+@keyframes run-spin { to { transform:rotate(360deg); } }
+@keyframes run-pulse { 50% { opacity:.35; } }
+@media (prefers-reduced-motion: reduce) {
+  .run-running .run-icon, .run-queued .run-icon { animation:none; }
+  .run-running .run-icon { border-top-color:currentColor; background:radial-gradient(currentColor 35%, transparent 40%); }
+}
+/* Transcript panel (transcript.js) */
+.tr-head { display:flex; gap:8px; align-items:center; margin-bottom:6px; }
+.tr-head select { flex:1; min-width:0; }
+.tr-status { display:block; font-size:12px; color:var(--muted); margin-bottom:6px; overflow-wrap:anywhere; }
+.transcript { list-style:none; margin:0; padding:0; max-height:50vh; overflow:auto; border:1px solid var(--line, #ddd);
+  border-radius:6px; font-size:12px; }
+.tr-ev { display:grid; grid-template-columns:auto 1fr; gap:0 8px; padding:4px 8px; border-bottom:1px solid var(--line, #eee); }
+.tr-kind { font-weight:600; color:var(--muted); }
+.tr-time { justify-self:end; color:var(--muted); font-size:11px; }
+.tr-text { grid-column:1 / -1; margin:2px 0 0; white-space:pre-wrap; overflow-wrap:anywhere; font:inherit; }
+.trk-assistant .tr-kind { color:var(--accent); }
+.trk-permission_denial, .trk-exit { background:color-mix(in srgb, var(--warn) 10%, transparent); }
+.trk-permission_denial .tr-kind { color:var(--warn); }
