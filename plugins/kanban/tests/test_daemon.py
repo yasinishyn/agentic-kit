@@ -432,6 +432,23 @@ class BoardTests(DaemonCase):
         self.assertIn('ev.event === "project.registered"', app)  # the board refreshes its project list
         self.assertIn("refreshProjects()", app)
 
+    def test_new_ticket_from_the_board(self):
+        """B14: the v0.2 "New ticket" form is back — a UI-token route creates the spec folder in Discovery."""
+        path = f"/api/projects/{self.pid}/tickets"
+        status, body = self.d.call("POST", path, {"title": "Weekly export"}, token="ui")
+        self.assertEqual(status, 200, body)
+        self.assertEqual((body["ticket"]["id"], body["ticket"]["status"]), ("weekly-export", "discovery"))
+        self.assertIn("status: discovery", (self.root / ".SDD/specs/weekly-export/README.md").read_text())
+        self.assertEqual(self.d.call("POST", path, {"title": "Weekly export"}, token="ui")[0], 409)  # never overwrites
+        self.assertEqual(self.d.call("POST", path, {"title": "   "}, token="ui")[0], 400)
+        self.assertEqual(self.d.call("POST", path, {"title": "x" * 121}, token="ui")[0], 400)
+        self.assertEqual(self.d.call("POST", path, {"title": "From Claude"})[0], 403)  # client token: human-only route
+        self.assertFalse((self.root / ".SDD/specs/from-claude").exists())
+        html = helpers.request(self.d.port, "GET", "/")[2].decode()
+        app = helpers.request(self.d.port, "GET", "/ui/app.js")[2].decode()
+        self.assertIn('id="new-ticket"', html)  # the header form
+        self.assertIn("/tickets`", app)
+
     def test_project_root_must_be_a_project(self):
         """B9: a project root is an existing directory holding .SDD, .git or .claude; anything else is 400."""
         bare = self.tmp / "bare"

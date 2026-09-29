@@ -97,7 +97,7 @@
     const Terminal = await loadXterm();
     const term = new Terminal({rows: ROWS, cols: 80, fontFamily: "Menlo, Monaco, 'SF Mono', monospace", fontSize: 12,
                                cursorBlink: true, scrollback: 5000, allowProposedApi: false,
-                               // xterm's default OSC 8 handler uses window.confirm(), which the macOS WebView lacks
+                               // xterm's default OSC 8 link handler asks through a native dialog the macOS WebView lacks
                                linkHandler: {activate: (_ev, uri) => { if (/^https?:\/\//i.test(uri)) window.open(uri); }}});
     term.open(s.host);
     term.attachCustomKeyEventHandler((ev) => {

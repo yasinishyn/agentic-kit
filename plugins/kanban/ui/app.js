@@ -199,6 +199,22 @@
     await loadBoard();
   }
 
+  /* New ticket from the header form (B14; the v0.2 board had it): a spec folder in Discovery. */
+  async function createTicket(ev) {
+    ev.preventDefault();
+    const input = $("new-ticket-title");
+    const title = input.value.trim();
+    if (!title || !state.project) return;
+    try {
+      const res = await api(projectPath(`/tickets`), {method: "POST", body: {title}});
+      input.value = "";
+      announce(`Created ticket ${res.ticket.title} in Discovery`);
+    } catch (err) {
+      announce(`Not created: ${err.message}`);
+    }
+    await loadBoard();
+  }
+
   // ---------------------------------------------------------------- drawer
   function closeDrawer() {
     state.drawerTicket = null;
@@ -335,6 +351,7 @@
   $("drawer-close").addEventListener("click", closeDrawer);
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("drawer").hidden) closeDrawer(); });
   $("project").addEventListener("change", (e) => selectProject(e.target.value));
+  $("new-ticket").addEventListener("submit", createTicket);
 
   if (!token) {
     $("auth").hidden = false;

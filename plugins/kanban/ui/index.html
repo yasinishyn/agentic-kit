@@ -19,6 +19,11 @@
   </label>
   <span id="status" class="muted" role="status"></span>
   <span class="muted hint">Tickets are <code>.SDD/specs/&lt;slug&gt;/README.md</code> · drag a card or use ← / →</span>
+  <form id="new-ticket" class="new-ticket">
+    <label for="new-ticket-title" class="sr-only">New ticket title</label>
+    <input id="new-ticket-title" name="title" maxlength="120" required placeholder="New ticket title…">
+    <button type="submit">Create</button>
+  </form>
 </header>
 <div id="live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 <div id="auth" class="notice" hidden>

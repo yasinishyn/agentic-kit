@@ -74,6 +74,7 @@ TICKET_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 # human-only endpoints: whoever registers them must use the ui scope, and a non-UI token is refused even before a
 # later PRD registers the route (architecture §8 scope matrix)
 UI_ONLY = (("POST", re.compile(r"^/api/projects/[^/]+/tickets/[^/]+/(move|approve)$")),
+           ("POST", re.compile(r"^/api/projects/[^/]+/tickets$")),  # New ticket from the board (B14)
            ("PUT", re.compile(r"^/api/projects/[^/]+/files(/.*)?$")),
            ("POST", re.compile(r"^/api/(.+/)?runs(/[^/]+)?/(start|stop)$")))
 CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
@@ -602,6 +603,7 @@ class Daemon:
         r("GET", "/api/events", self.h_events, "read")
         r("GET", "/api/projects/{project}/board", self.h_board, "read")
         r("GET", "/api/projects/{project}/view", self.h_view, "read")
+        r("POST", "/api/projects/{project}/tickets", self.h_new_ticket, "ui")
         r("POST", "/api/projects/{project}/tickets/{ticket}/move", self.h_move, "ui")
         r("POST", "/api/projects/{project}/tickets/{ticket}/approve", self.h_approve, "ui")
         r("POST", "/api/projects/{project}/tickets/{ticket}/approve-chat", self.h_approve_chat, "client")
@@ -688,6 +690,19 @@ class Daemon:
             except Exception as exc:
                 log(f"on_human_move hook {getattr(fn, '__qualname__', fn)} failed: {exc!r}")
         return {"ok": True, "ticket": moved, "handoff": handoff}
+
+    def h_new_ticket(self, req):
+        """The board's New-ticket form (v0.2 capability, B14): a spec folder in Discovery; never overwrites."""
+        project = req.project()
+        title = req.json.get("title")
+        if not isinstance(title, str) or not title.strip() or len(title.strip()) > 120:
+            raise ApiError(400, "title must be 1-120 characters")
+        try:
+            ticket = km.create_ticket(Path(project["root"]), title.strip())
+        except ValueError as exc:
+            raise ApiError(409, str(exc))
+        self.bus.publish(project["id"], "board.changed", {"ticket": ticket["id"], "source": "new"})
+        return {"ok": True, "ticket": ticket}
 
     def h_approve(self, req):
         project = req.project()

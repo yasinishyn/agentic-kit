@@ -28,7 +28,7 @@ A macOS Tauri 2 app that ensure-starts the daemon, shows the board in a native w
 - [ ] `ui/modules/terminal.js` (xterm.js) hidden in browser mode; keyboard focus can leave the terminal (documented shortcut)
 - [x] Menu: Reload, Open in browser (`--open`), Stop board service (disabled when `GET /api/runs?live=1` reports runs; enabled if the endpoint is absent), Quit
 - [x] `plugins/kanban/app/.gitignore` ignores `src-tauri/target/`; xterm.js vendored with its MIT licence (download only with the owner's permission)
-- [x] `cargo test` green; `cargo tauri build --bundles app` produces `Kanban.app`; smoke launch opens the board
+- [x] `cargo test` green; `cargo tauri build --bundles app` produces `Kanban.app` · [ ] smoke launch by the user: Demo (agent smoke launch reached the daemon only)
 
 ## Owned files (only these may change)
 - `plugins/kanban/app/**` (new, incl. `app/.gitignore`)
