@@ -1,6 +1,6 @@
 ---
 title: PRD-01 - Bundled Python runtime and app resolution
-status: todo
+status: done
 updated: 2026-09-29
 ---
 
@@ -14,6 +14,14 @@ updated: 2026-09-29
 | Parallelisable | Yes — wave 1 (with PRD-02, PRD-03) |
 
 Paths are relative to `plugins/kanban/`; repo-root paths start with `/`.
+
+> **Developer notes (2026-09-29, E2E with the real 20260924 archives):** the first trim left 71 MB (Tcl/Tk 9.0,
+> pip, share/, pkgconfig, dev launchers, and an 18 MB libpython dylib the statically linked interpreter never loads);
+> the trim was extended (dylib removed only when `otool -L` shows no libpython link) and `bin/` reduced to one real
+> `python3` (Tauri copies symlinks as files) → **38.5–39 MB per arch**, app 84 MB. The E2E launch also found the
+> `--ensure` process spawning the long-lived daemon without `-E -B` (7 .pyc written into the bundle); fixed in
+> `daemon.spawn_argv()` with `test_daemon.SpawnFlagsTests`. Re-run: daemon on the bundled interpreter with `-E -B`,
+> 0 files written inside the app.
 
 ## Goal
 A pinned, pruned, precompiled CPython for both arches that release builds bundle (and default builds do not), and an
@@ -57,15 +65,15 @@ app that prefers it and never writes bytecode into its bundle.
 | Daemon env | `daemon.py` started by the app | — |
 
 ## Acceptance criteria
-- [ ] `python.lock` pins both arches; URLs are https on `github.com/astral-sh/python-build-standalone`; sha256 64-hex (step 1)
-- [ ] `fetch-python.sh` refuses a wrong sum before writing anything (dest dir absent afterwards) (step 4)
-- [ ] After a fetch, none of: `test/`, `tests/` under the stdlib, `idlelib`, `tkinter`, `turtledemo`, `ensurepip`, `lib2to3`, `pydoc_data`, `lib/tcl8.6`, `lib/tk8.6`, `libtcl*`, `libtk*`, `include/`, `lib/python3.12/config-*`, `libpython*.a` exist; every `licence_files` entry exists (step 4, Q13)
-- [ ] Every stdlib `.py` kept has an unchecked-hash `.pyc` in `__pycache__` (step 4)
-- [ ] Unpacked tree per arch ≤ 45 MB, measured and printed by the script; the ceiling changes only with an ADR-001 note (step 4)
-- [ ] `tauri.conf.json` still contains no `python` resource; `cargo test` and `cargo tauri build --bundles app` pass on a checkout without `resources/python/` (steps 5–6, V02)
-- [ ] `python.rs`: the bundled interpreter is candidate 0 for `aarch64` and `x86_64` when present; absent → v0.3 order unchanged (step 7)
-- [ ] With the bundled interpreter the daemon command's args start with `-E -B`; with a system interpreter the env carries `PYTHONDONTWRITEBYTECODE=1` (cargo test on the built `Command`) (step 8, architect re-review N1)
-- [ ] Local: `fetch-python.sh --arch arm64` + `cargo tauri build --bundles app --config src-tauri/tauri.release.conf.json` → the running daemon's `ps -o args=` shows `…/Kanban.app/Contents/Resources/python/arm64/bin/python3` and `find Kanban.app -newer <launch marker> -name '*.pyc'` is empty after a launch
+- [x] `python.lock` pins both arches; URLs are https on `github.com/astral-sh/python-build-standalone`; sha256 64-hex (step 1)
+- [x] `fetch-python.sh` refuses a wrong sum before writing anything (dest dir absent afterwards) (step 4)
+- [x] After a fetch, none of: `test/`, `tests/` under the stdlib, `idlelib`, `tkinter`, `turtledemo`, `ensurepip`, `lib2to3`, `pydoc_data`, `lib/tcl8.6`, `lib/tk8.6`, `libtcl*`, `libtk*`, `include/`, `lib/python3.12/config-*`, `libpython*.a` exist; every `licence_files` entry exists (step 4, Q13)
+- [x] Every stdlib `.py` kept has an unchecked-hash `.pyc` in `__pycache__` (step 4)
+- [x] Unpacked tree per arch ≤ 45 MB, measured and printed by the script; the ceiling changes only with an ADR-001 note (step 4)
+- [x] `tauri.conf.json` still contains no `python` resource; `cargo test` and `cargo tauri build --bundles app` pass on a checkout without `resources/python/` (steps 5–6, V02)
+- [x] `python.rs`: the bundled interpreter is candidate 0 for `aarch64` and `x86_64` when present; absent → v0.3 order unchanged (step 7)
+- [x] With the bundled interpreter the daemon command's args start with `-E -B`; with a system interpreter the env carries `PYTHONDONTWRITEBYTECODE=1` (cargo test on the built `Command`) (step 8, architect re-review N1)
+- [x] Local: `fetch-python.sh --arch arm64` + `cargo tauri build --bundles app --config src-tauri/tauri.release.conf.json` → the running daemon's `ps -o args=` shows `…/Kanban.app/Contents/Resources/python/arm64/bin/python3` and `find Kanban.app -newer <launch marker> -name '*.pyc'` is empty after a launch
 
 ## Edge cases
 | Case | Handling | Priority |

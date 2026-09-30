@@ -1,7 +1,7 @@
 {
   "name": "kanban",
   "displayName": "Kanban",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Kanban for SDD work over your .SDD/specs markdown: a desktop app and local board daemon, board moves handed to Claude (channels or headless runs), a live working indicator, recorded approvals, and the kanban:sdd skill.",
   "author": {
     "name": "agentic-kit"

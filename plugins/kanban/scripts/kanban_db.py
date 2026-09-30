@@ -10,6 +10,7 @@ Standard library only.
 """
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
@@ -37,6 +38,8 @@ RUN_TRANSITIONS = {
 }
 RUN_KINDS = ("interactive", "headless")
 SESSION_KINDS = ("interactive", "headless")
+SESSION_ORIGINS = ("cli", "cli-print", "code-tab", "headless", "unknown")
+SESSION_PYTHONS = ("bundled", "system", "unknown")
 HANDOFF_KINDS = ("start", "rework")
 HANDOFF_STATES = ("queued", "delivered", "claimed", "done", "coalesced", "superseded", "requeued")
 HANDOFF_UNCLAIMED = ("queued", "delivered", "coalesced", "requeued")
@@ -86,6 +89,13 @@ CREATE TABLE ticket_sessions (
 CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """,
 }
+
+
+# Additive columns (ADR-004): added after `migrate` when missing, outside the user_version ladder, so a v0.3.0 daemon
+# (SCHEMA_VERSION 1) still opens the file and its INSERTs (which name no such column) get the default. A later real
+# migration must tolerate these columns already existing.
+ADDITIVE_COLUMNS = (("sessions", "origin", "TEXT NOT NULL DEFAULT 'unknown'"),
+                    ("sessions", "python", "TEXT NOT NULL DEFAULT 'unknown'"))
 
 
 class LiveRunExists(ValueError):
@@ -174,6 +184,19 @@ def migrate(conn: sqlite3.Connection) -> None:
             raise
 
 
+def add_columns(conn) -> None:
+    """Add every ADDITIVE_COLUMNS entry the table lacks (idempotent; a concurrent start that added it first makes
+    ALTER fail with "duplicate column", which is tolerated)."""
+    for table, column, decl in ADDITIVE_COLUMNS:
+        if column in {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}:
+            continue
+        try:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+        except sqlite3.OperationalError as exc:
+            if "duplicate column" not in str(exc).lower():
+                raise
+
+
 def connect(path: Path) -> sqlite3.Connection:
     path = Path(path)
     if not path.exists():
@@ -181,8 +204,17 @@ def connect(path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(str(path), timeout=5.0, isolation_level=None, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout = 5000")
-    conn.execute("PRAGMA journal_mode = WAL")
-    migrate(conn)
+    # One-time setup is serialised across threads and processes: switching a fresh file to WAL needs an exclusive
+    # lock that SQLite may refuse at once ("database is locked") instead of waiting, when several sessions start
+    # together (reproduced 5/40 with 8 concurrent openers before this lock).
+    lock_fd = os.open(str(path) + ".init.lock", os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        conn.execute("PRAGMA journal_mode = WAL")
+        migrate(conn)
+        add_columns(conn)
+    finally:
+        os.close(lock_fd)  # releases the flock
     for suffix in ("", "-wal", "-shm"):
         try:
             os.chmod(str(path) + suffix, 0o600)
@@ -271,15 +303,31 @@ def list_projects(conn) -> list[dict]:
 
 
 def register_session(conn, project_id: str, kind: str, claude_pid, claude_start_time, channel: bool = False,
-                     run_id: str | None = None) -> dict:
+                     run_id: str | None = None, origin: str = "unknown", python: str = "unknown") -> dict:
+    """origin: how the session is connected (SESSION_ORIGINS, a label only); python: the interpreter its MCP server
+    runs on (SESSION_PYTHONS)."""
     if kind not in SESSION_KINDS:
         raise ValueError(f"kind must be one of {', '.join(SESSION_KINDS)}")
+    if origin not in SESSION_ORIGINS:
+        raise ValueError(f"origin must be one of {', '.join(SESSION_ORIGINS)}")
+    if python not in SESSION_PYTHONS:
+        raise ValueError(f"python must be one of {', '.join(SESSION_PYTHONS)}")
     sid, now = _new_id("s"), time.time()
     conn.execute("INSERT INTO sessions (id, project_id, kind, channel, claude_pid, claude_start_time, run_id, "
-                 "created_at, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 "created_at, last_seen, origin, python) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                  (sid, project_id, kind, 1 if channel else 0, int(claude_pid) if claude_pid else None,
-                  str(claude_start_time or ""), run_id, now, now))
+                  str(claude_start_time or ""), run_id, now, now, origin, python))
     return get_session(conn, sid)
+
+
+def remove_project(conn, project_id: str) -> list[str]:
+    """Delete the project row and its session rows (hand-offs, runs, approvals stay: re-adding the same folder yields
+    the same id and reattaches them). Returns the removed session ids."""
+    with transaction(conn):
+        sids = [r[0] for r in conn.execute("SELECT id FROM sessions WHERE project_id=?", (str(project_id),))]
+        conn.execute("DELETE FROM sessions WHERE project_id=?", (str(project_id),))
+        conn.execute("DELETE FROM projects WHERE id=?", (str(project_id),))
+    return sids
 
 
 def get_session(conn, session_id: str) -> dict | None:
@@ -504,6 +552,9 @@ class Settings:
     def set(self, key: str, value) -> None:
         self._store.conn().execute("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET "
                                    "value=excluded.value", (key, str(value)))
+
+    def delete(self, key: str) -> None:
+        self._store.conn().execute("DELETE FROM settings WHERE key=?", (key,))
 
     def items(self) -> dict:
         return {r[0]: r[1] for r in self._store.conn().execute("SELECT key, value FROM settings ORDER BY key")}

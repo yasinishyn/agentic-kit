@@ -42,3 +42,5 @@ listed in `LICENSES/NOTICE.md` and are not copied into projects (Q13).
   size ceiling, `.pyc` present), cargo `python_resolution_prefers_bundled` and `daemon_command_isolated_bundled`
   (`python.rs`, `shell.rs`), `plugins/kanban/tests/test_kpython.py` (order, run-check fallback, `PYTHONHOME` ignored, missing,
   `--probe`, parity with the daemon's `plugin_python` hint).
+
+**Measured 2026-09-29 (real archives):** 38.5–39 MB per arch after the extended trim (Tcl/Tk 9.0, pip, share, pkgconfig, unused libpython dylib, dev launchers, symlinked duplicates); `ssl`, `sqlite3`, `ctypes`, `json` import under `-E -B`; app bundle 84 MB.

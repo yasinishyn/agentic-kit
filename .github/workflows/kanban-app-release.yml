@@ -1,0 +1,173 @@
+# Kanban desktop app release (PRD-04, ADR-002).
+#
+# - Tag push `kanban-v<version>` (the developer): tests, universal build, nested signing (Developer ID when the
+#   APPLE_* secrets exist, ad-hoc otherwise), then a DRAFT GitHub Release the developer reviews and publishes.
+# - workflow_dispatch: dry run — tests + build + artefact; never signs, never reaches the release job.
+#
+# Least privilege: the build job (third-party code, signing secrets) has a read-only token; the release job has the
+# write token but checks out and runs no project code. Every action is pinned by commit SHA.
+name: kanban-app-release
+
+on:
+  push:
+    tags: ['kanban-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kanban-app-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-14
+    permissions:
+      contents: read
+    outputs:
+      signed: ${{ steps.signing.outputs.signed }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Tag matches the five version fields
+        if: github.event_name == 'push'
+        run: |
+          python3 - <<'PY'
+          import json, os, re, sys
+          tag = os.environ["GITHUB_REF_NAME"]
+          if not tag.startswith("kanban-v"):
+              sys.exit(f"tag {tag!r} does not start with kanban-v")
+          want = tag[len("kanban-v"):]
+          def grab(path, pattern):
+              m = re.search(pattern, open(path).read(), re.M)
+              return m.group(1) if m else None
+          market = json.load(open(".claude-plugin/marketplace.json"))
+          found = {
+              "plugins/kanban/.claude-plugin/plugin.json":
+                  json.load(open("plugins/kanban/.claude-plugin/plugin.json")).get("version"),
+              ".claude-plugin/marketplace.json":
+                  next((p.get("version") for p in market["plugins"] if p.get("name") == "kanban"), None),
+              "plugins/kanban/scripts/daemon.py":
+                  grab("plugins/kanban/scripts/daemon.py", r'^VERSION = .*"([^"]+)"\s*$'),
+              "plugins/kanban/app/src-tauri/tauri.conf.json":
+                  json.load(open("plugins/kanban/app/src-tauri/tauri.conf.json")).get("version"),
+              "plugins/kanban/app/src-tauri/Cargo.toml":
+                  grab("plugins/kanban/app/src-tauri/Cargo.toml", r'^version = "([^"]+)"'),
+          }
+          bad = {path: v for path, v in found.items() if v != want}
+          for path, v in found.items():
+              print(f"{'ok ' if v == want else 'BAD'} {path}: {v}")
+          if bad:
+              sys.exit(f"tag {tag} wants version {want}; mismatched: {', '.join(bad)}")
+          PY
+
+      - name: Plugin tests
+        run: python3 -m unittest discover -s plugins/kanban/tests -p 'test_*.py'
+
+      - name: Kit tests (installer, python.lock, release workflow)
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
+
+      - name: Guard hook tests
+        run: bash .claude/hooks/test_guard_bash.sh
+
+      - name: Rust toolchain (both apple-darwin targets)
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Rust tests
+        working-directory: plugins/kanban/app/src-tauri
+        run: cargo test --locked
+
+      - name: Install tauri-cli
+        run: cargo install tauri-cli --locked --version 2.12.0
+
+      - name: Fetch the bundled Python runtimes
+        run: bash plugins/kanban/app/scripts/fetch-python.sh --arch both
+
+      - name: Signing flag (tag push with a certificate only) and keychain import
+        id: signing
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "push" ] && [ -n "$APPLE_CERTIFICATE" ]; then
+            keychain="$RUNNER_TEMP/kanban-signing.keychain-db"
+            keychain_password="$(openssl rand -base64 24)"
+            cert="$RUNNER_TEMP/kanban-signing.p12"
+            printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$cert"
+            security create-keychain -p "$keychain_password" "$keychain"
+            security set-keychain-settings -lut 21600 "$keychain"
+            security unlock-keychain -p "$keychain_password" "$keychain"
+            security import "$cert" -P "$APPLE_CERTIFICATE_PASSWORD" -f pkcs12 -k "$keychain" -T /usr/bin/codesign
+            rm -f "$cert"
+            security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" > /dev/null
+            security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+            echo "SIGNING=1" >> "$GITHUB_ENV"
+            echo "signed=1" >> "$GITHUB_OUTPUT"
+            echo "Signing with the imported Developer ID certificate."
+          else
+            echo "signed=0" >> "$GITHUB_OUTPUT"
+            echo "Unsigned build (event: $EVENT_NAME; certificate present: $([ -n "$APPLE_CERTIFICATE" ] && echo yes || echo no))."
+          fi
+
+      - name: Package (sign nested code, build, verify, smoke test, zip, sums)
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ env.SIGNING == '1' && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          APPLE_ID: ${{ env.SIGNING == '1' && secrets.APPLE_ID || '' }}
+          APPLE_PASSWORD: ${{ env.SIGNING == '1' && secrets.APPLE_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ env.SIGNING == '1' && secrets.APPLE_TEAM_ID || '' }}
+        run: bash plugins/kanban/app/scripts/package-release.sh
+
+      - name: Upload dist/
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: kanban-app-dist
+          path: dist/
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download dist/
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: kanban-app-dist
+          path: dist
+
+      - name: Release notes
+        env:
+          SIGNED: ${{ needs.build.outputs.signed }}
+        run: |
+          set -euo pipefail
+          {
+            echo "Kanban desktop app $GITHUB_REF_NAME (universal: Apple Silicon + Intel, macOS 11+)."
+            echo
+            if [ "$SIGNED" = "1" ]; then
+              echo "Signed with a Developer ID certificate."
+            else
+              echo "This build is unsigned — see first-launch steps in the kanban plugin README."
+            fi
+            echo
+            echo "SHA256SUMS:"
+            echo '```'
+            cat dist/SHA256SUMS
+            echo '```'
+          } > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md"
+
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft
+          --title "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md"
+          dist/Kanban.dmg dist/Kanban.app.zip dist/SHA256SUMS

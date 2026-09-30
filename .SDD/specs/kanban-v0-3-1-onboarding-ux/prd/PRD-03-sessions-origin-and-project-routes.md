@@ -1,6 +1,6 @@
 ---
 title: PRD-03 - Plugin launcher, session origin, onboarding and project routes
-status: todo
+status: done
 updated: 2026-09-29
 ---
 
@@ -81,21 +81,21 @@ announces changes live; the UI can add (with a preview) and remove projects and 
 | `DELETE /api/projects/{p}` → `{removed: id}` | PRD-05 remove action | unknown → 404; live runs (queued/running/waiting) → 409 naming the count; client token → 403 |
 
 ## Acceptance criteria
-- [ ] `kpython` chooses `~/Applications` bundle, then `/Applications` bundle, then system `python3` (fake `$HOME` + PATH); a bundled interpreter is exec'ed with `-E -B`, a system one with `PYTHONDONTWRITEBYTECODE=1`; missing → 127 with the message, `--quiet-missing` → 0 silent (step 2)
-- [ ] A fake bundled python that exits 1 on the run-check → the system `python3` is chosen and `--probe` reports it; with `PYTHONHOME=/bogus` the bundled interpreter still starts (step 2, re-review N1)
-- [ ] On a 410 from registration, `server.py` serves the MCP tools on markdown, starts no embedded UI and prints exactly one notice naming both ways to re-add (step 5, re-review N2)
-- [ ] A session's `python` report is stored; `plugin_python` follows live sessions and is `source: hint` only while none is live (steps 4, 8, re-review N3)
-- [ ] `.mcp.json` and `hooks/hooks.json` invoke `sh …/kpython`; `claude plugin validate plugins/kanban` passes (step 3)
-- [ ] Opening a v0.3.0 DB adds `origin` once; a second open is a no-op; `PRAGMA user_version` stays 1; a v0.3.0-style `INSERT INTO sessions (…without origin…)` still succeeds (step 4)
-- [ ] argv samples → `code-tab`, `cli-print`, `cli`, `unknown`; a derived headless run stores `headless` whatever was sent (steps 5–6)
-- [ ] `session.changed` is received by a project subscriber on registration, subscription open and close (step 6)
-- [ ] `POST /api/projects/add` on an existing folder with no marker and `create_specs: true` → 400 and no `.SDD` created (step 7)
-- [ ] `dry_run: true` returns the preview, creates nothing and publishes nothing; `path: "~"` → `resolved` = home and `is_home: true` (step 7)
-- [ ] Real add with `create_specs: true` on a `.git`-only folder creates only `.SDD/specs/` (step 7)
-- [ ] `DELETE` → 409 with a live run; otherwise the project and its sessions are gone, files untouched, `project.removed` published, the project's event streams closed, and a following `POST /api/sessions` for that folder → 410; UI add clears it (step 7)
-- [ ] Onboarding: `connected` flips when a channel session subscribes; `first_move` after one UI move; `dismissed` persists across daemon restart (step 8)
-- [ ] The hint `plugin_python` agrees with `kpython --probe` for the same fake `$HOME`/PATH (step 8)
-- [ ] All four mutating/new routes behave per the abuse probe rows; `test_abuse.py` passes (step 9)
+- [x] `kpython` chooses `~/Applications` bundle, then `/Applications` bundle, then system `python3` (fake `$HOME` + PATH); a bundled interpreter is exec'ed with `-E -B`, a system one with `PYTHONDONTWRITEBYTECODE=1`; missing → 127 with the message, `--quiet-missing` → 0 silent (step 2)
+- [x] A fake bundled python that exits 1 on the run-check → the system `python3` is chosen and `--probe` reports it; with `PYTHONHOME=/bogus` the bundled interpreter still starts (step 2, re-review N1)
+- [x] On a 410 from registration, `server.py` serves the MCP tools on markdown, starts no embedded UI and prints exactly one notice naming both ways to re-add (step 5, re-review N2)
+- [x] A session's `python` report is stored; `plugin_python` follows live sessions and is `source: hint` only while none is live (steps 4, 8, re-review N3)
+- [x] `.mcp.json` and `hooks/hooks.json` invoke `sh …/kpython`; `claude plugin validate plugins/kanban` passes (step 3)
+- [x] Opening a v0.3.0 DB adds `origin` once; a second open is a no-op; `PRAGMA user_version` stays 1; a v0.3.0-style `INSERT INTO sessions (…without origin…)` still succeeds (step 4)
+- [x] argv samples → `code-tab`, `cli-print`, `cli`, `unknown`; a derived headless run stores `headless` whatever was sent (steps 5–6)
+- [x] `session.changed` is received by a project subscriber on registration, subscription open and close (step 6)
+- [x] `POST /api/projects/add` on an existing folder with no marker and `create_specs: true` → 400 and no `.SDD` created (step 7)
+- [x] `dry_run: true` returns the preview, creates nothing and publishes nothing; `path: "~"` → `resolved` = home and `is_home: true` (step 7)
+- [x] Real add with `create_specs: true` on a `.git`-only folder creates only `.SDD/specs/` (step 7)
+- [x] `DELETE` → 409 with a live run; otherwise the project and its sessions are gone, files untouched, `project.removed` published, the project's event streams closed, and a following `POST /api/sessions` for that folder → 410; UI add clears it (step 7)
+- [x] Onboarding: `connected` flips when a channel session subscribes; `first_move` after one UI move; `dismissed` persists across daemon restart (step 8)
+- [x] The hint `plugin_python` agrees with `kpython --probe` for the same fake `$HOME`/PATH (step 8)
+- [x] All four mutating/new routes behave per the abuse probe rows; `test_abuse.py` passes (step 9)
 
 ## Edge cases
 | Case | Handling | Priority |

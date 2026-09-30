@@ -1,0 +1,11 @@
+{
+  "bundle": {
+    "resources": {
+      "resources/python/arm64": "python/arm64",
+      "resources/python/x86_64": "python/x86_64"
+    },
+    "macOS": {
+      "entitlements": "entitlements.plist"
+    }
+  }
+}

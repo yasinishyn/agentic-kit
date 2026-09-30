@@ -1,6 +1,6 @@
 ---
 title: PRD-06 - App folder picker and project-level Connect Claude
-status: todo
+status: done
 updated: 2026-09-29
 ---
 
@@ -50,15 +50,15 @@ a project-level Connect Claude that starts (or reveals) Claude with channels in 
 | Project terminal panel | same host node as the drawer tab | host re-attached; pty survives |
 
 ## Acceptance criteria
-- [ ] `tauri-plugin-dialog` is the only new crate; `cargo build --locked` works with the committed lock (step 2, NFR-01)
-- [ ] Whatever tauri-build generates outside `gen/` for the new command is committed, or nothing if it generates nothing there; `git status` is clean after a fresh `cargo build` (step 3, re-review N6)
-- [ ] The capability built by `scope::capability(origin)` lists exactly `core:event:default`, the four `allow-term-*` and `allow-pick-folder`; no `dialog:*`; no static `capabilities/` directory is added (steps 3–4)
-- [ ] `pick_folder` from another window label or a non-daemon origin → `Err`, no dialog shown (cargo scope test) (step 5)
-- [ ] In the app, Add project → native picker → the PRD-05 preview shows the resolved path (manual Demo step) (step 5, FR-02)
-- [ ] Connect Claude from the connection panel opens the project terminal running the channels command in the project folder; the welcome's Connect step turns done once that session subscribes (step 6, FR-05)
-- [ ] A second Connect Claude reveals the running session instead of starting another (step 6)
-- [ ] `terminal.js` contains no colour or pixel spacing literals; it uses PRD-05 classes/`var(--…)` tokens (step 6)
-- [ ] The per-ticket Terminal tab still works (v0.3 behaviour) (step 6)
+- [x] `tauri-plugin-dialog` is the only new crate; `cargo build --locked` works with the committed lock (step 2, NFR-01)
+- [x] Whatever tauri-build generates outside `gen/` for the new command is committed, or nothing if it generates nothing there; `git status` is clean after a fresh `cargo build` (step 3, re-review N6)
+- [x] The capability built by `scope::capability(origin)` lists exactly `core:event:default`, the four `allow-term-*` and `allow-pick-folder`; no `dialog:*`; no static `capabilities/` directory is added (steps 3–4)
+- [x] `pick_folder` from another window label or a non-daemon origin → `Err`, no dialog shown (cargo scope test) (step 5)
+- [x] In the app, Add project → native picker → the PRD-05 preview shows the resolved path (manual Demo step) (step 5, FR-02)
+- [x] Connect Claude from the connection panel opens the project terminal running the channels command in the project folder; the welcome's Connect step turns done once that session subscribes (step 6, FR-05)
+- [x] A second Connect Claude reveals the running session instead of starting another (step 6)
+- [x] `terminal.js` contains no colour or pixel spacing literals; it uses PRD-05 classes/`var(--…)` tokens (step 6)
+- [x] The per-ticket Terminal tab still works (v0.3 behaviour) (step 6)
 
 ## Edge cases
 | Case | Handling | Priority |

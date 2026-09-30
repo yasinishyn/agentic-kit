@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened-runtime entitlements for Kanban.app and its bundled Python (PRD-04, ADR-002).
+  Starts with no exception keys. Add a key only when a signed build fails package-release.sh's smoke test
+  (`python3 -E -B -c 'import ssl, sqlite3, ctypes, json'`), and record why in ADR-002.
+-->
+<plist version="1.0">
+<dict/>
+</plist>

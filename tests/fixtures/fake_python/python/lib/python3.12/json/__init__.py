@@ -1,0 +1,1 @@
+"""Fake stdlib package (kept)."""

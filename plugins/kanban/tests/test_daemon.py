@@ -72,7 +72,7 @@ class DaemonCase(unittest.TestCase):
         self.root = helpers.make_project(self.tmp)
         km.create_ticket(self.root, "Login")
         extra = {"KANBAN_ROUTES_DIRS": self.routes_dirs} if self.routes_dirs else {}
-        self.d = helpers.TestDaemon(**extra).start()
+        self.d = helpers.TestDaemon(**extra, **self.daemon_env()).start()
         self.session = self.d.register(self.root)
         self.pid = self.session["project_id"]
 
@@ -80,8 +80,43 @@ class DaemonCase(unittest.TestCase):
         self.d.stop()
         shutil.rmtree(self.tmp, ignore_errors=True)
 
+    def daemon_env(self) -> dict:
+        return {}
+
+    def restart(self):
+        """Stop the daemon and start a new one on the same KANBAN_HOME (settings and DB survive)."""
+        home, own = self.d.home, self.d.own_home
+        self.d.own_home = False
+        self.d.stop()
+        if own:
+            self.addCleanup(shutil.rmtree, home, True)
+        self.d = helpers.TestDaemon(home=home, **self.daemon_env()).start()
+
     def move(self, stage, token="ui", ticket="login"):
         return self.d.call("POST", f"/api/projects/{self.pid}/tickets/{ticket}/move", {"stage": stage}, token=token)
+
+
+class SpawnFlagsTests(unittest.TestCase):
+    """v0.3.1 PRD-01 E2E finding: `--ensure` run as `python3 -E -B` must spawn the long-lived daemon with the same
+    isolation, or it writes .pyc files into the app bundle (breaks a signed bundle) and honours PYTHONHOME."""
+
+    def argv_under(self, *flags):
+        code = ("import sys; sys.path.insert(0, %r); import daemon; print(daemon.spawn_argv()[:len(sys.argv)+4])"
+                % str(helpers.SCRIPTS))
+        out = subprocess.run([sys.executable, *flags, "-c", code], capture_output=True, text=True, timeout=30,
+                             env={**os.environ, "KANBAN_HOME": tempfile.mkdtemp(), "KANBAN_NO_DAEMON": "1"})
+        self.assertEqual(out.returncode, 0, out.stderr)
+        return eval(out.stdout.strip())  # a printed list of str (our own output)
+
+    def test_isolated_ensure_spawns_isolated_daemon(self):
+        argv = self.argv_under("-E", "-B")
+        self.assertEqual(argv[0], sys.executable)
+        self.assertEqual(argv[1:3], ["-E", "-B"])
+        self.assertTrue(argv[3].endswith("daemon.py") and argv[4] == "--foreground", argv)
+
+    def test_plain_ensure_spawns_plain_daemon(self):
+        argv = self.argv_under()
+        self.assertTrue(argv[1].endswith("daemon.py") and argv[2] == "--foreground", argv)
 
 
 class LifecycleTests(unittest.TestCase):
@@ -518,6 +553,333 @@ class BoardTests(DaemonCase):
             store.close()
         self.assertEqual(sum(len(t["subtasks"]) for t in board["tickets"]), 500)
         self.assertLess(elapsed, 0.2, f"board JSON took {elapsed * 1000:.0f} ms")
+
+
+def ended(stream: Stream, timeout=5.0) -> bool:
+    """True when the daemon closes the stream (EOF) within `timeout`; the events met on the way are dropped."""
+    end = time.time() + timeout
+    while time.time() < end:
+        stream.sock.settimeout(max(0.05, end - time.time()))
+        try:
+            line = stream.resp.readline()
+        except OSError:
+            return False
+        if not line:
+            return True
+    return False
+
+
+class SessionsTests(DaemonCase):
+    """v0.3.1 PRD-03 steps 6–7: session origin/python, GET sessions, session.changed (ADR-004, Q17)."""
+
+    def sessions(self):
+        status, body = self.d.get(f"/api/projects/{self.pid}/sessions", token="ui")
+        self.assertEqual(status, 200, body)
+        return body["sessions"]
+
+    def post_session(self, **body):
+        status, out = self.d.call("POST", "/api/sessions", {"project_root": str(self.root), "claude_pid": os.getpid(),
+                                                            "claude_start_time": "", **body})
+        self.assertEqual(status, 200, out)
+        return out["session_id"]
+
+    def row(self, sid):
+        store = kdb.Store(kdb.db_path(self.d.home))
+        self.addCleanup(store.close)
+        return kdb.get_session(store.conn(), sid)
+
+    def test_sessions_endpoint(self):
+        self.assertEqual(self.sessions(), [])  # registered but not live
+        sid = self.post_session(origin="code-tab", python="bundled", channel=True)
+        stream = Stream(self.d.port, self.d.client_token, self.pid, session=sid)
+        try:
+            stream.next("hello")
+            got = self.sessions()
+            self.assertEqual(len(got), 1)
+            self.assertEqual(sorted(got[0]), ["channel", "id", "kind", "last_seen", "origin", "run_id"])
+            self.assertEqual((got[0]["id"], got[0]["kind"], got[0]["origin"], got[0]["channel"], got[0]["run_id"]),
+                             (sid, "interactive", "code-tab", True, None))
+            self.assertIsInstance(got[0]["last_seen"], float)
+            self.assertEqual(self.d.get(f"/api/projects/{self.pid}/sessions")[0], 200)  # read scope
+        finally:
+            stream.close()
+        self.assertEqual(self.d.get("/api/projects/nope/sessions", token="ui")[0], 404)
+        # unknown values are stored as unknown; a posted "headless" is never trusted
+        for sent in ("evil", "headless", 7, None):
+            row = self.row(self.post_session(origin=sent, python=sent))
+            self.assertEqual((row["origin"], row["python"]), ("unknown", "unknown"), sent)
+        self.assertEqual(self.row(self.post_session())["origin"], "unknown")
+        # a derived headless run stores headless whatever was sent
+        store = kdb.Store(kdb.db_path(self.d.home))
+        self.addCleanup(store.close)
+        kdb.create_run(store.conn(), self.pid, "login", "architect", "headless", run_id="r-hl",
+                       claude_pid=os.getpid(), claude_start_time=kd.process_start_time(os.getpid()))
+        row = self.row(self.post_session(origin="code-tab", python="system", claude_start_time="x"))
+        self.assertEqual((row["kind"], row["origin"], row["python"], row["run_id"]),
+                         ("headless", "headless", "system", "r-hl"))
+
+    def test_session_changed_events(self):
+        stream = Stream(self.d.port, self.d.ui_token, self.pid)
+        try:
+            stream.next("hello")
+            sid = self.post_session(origin="cli", channel=True)
+            ev = stream.next("session.changed")
+            self.assertIsNotNone(ev, "session.changed on registration")
+            self.assertEqual((ev["project"], ev["data"]),
+                             (self.pid, {"session": {"id": sid, "kind": "interactive", "origin": "cli",
+                                                     "channel": True}, "live": False}))
+            live = Stream(self.d.port, self.d.client_token, session=sid)  # an all-projects subscription counts too
+            live.next("hello")
+            ev = stream.next("session.changed")
+            self.assertEqual((ev["data"]["session"]["id"], ev["data"]["live"]), (sid, True))
+            live.close()
+            ev = stream.next("session.changed")
+            self.assertIsNotNone(ev, "session.changed on subscription close")
+            self.assertEqual((ev["data"]["session"]["id"], ev["data"]["live"]), (sid, False))
+            ui = Stream(self.d.port, self.d.ui_token, self.pid, session=sid)  # the UI token never makes one live
+            ui.next("hello")
+            self.assertIsNone(stream.next("session.changed", timeout=0.5))
+            ui.close()
+        finally:
+            stream.close()
+
+
+class AddRemoveProjectTests(DaemonCase):
+    """v0.3.1 PRD-03 step 7 (ADR-006): add with dry-run preview, remove with a tombstone."""
+
+    def setUp(self):
+        self.fake_home = Path(tempfile.mkdtemp(prefix="kanban-fake-home-"))
+        (self.fake_home / ".claude").mkdir()
+        self.addCleanup(shutil.rmtree, self.fake_home, True)
+        super().setUp()
+
+    def daemon_env(self) -> dict:
+        return {"HOME": self.fake_home}  # `~` is the daemon user's home
+
+    def add(self, body, token="ui"):
+        return self.d.call("POST", "/api/projects/add", body, token=token)
+
+    def project_ids(self):
+        return [p["id"] for p in self.d.get("/api/projects")[1]["projects"]]
+
+    def tree(self, root: Path) -> list:
+        return sorted(str(p.relative_to(root)) for p in root.rglob("*"))
+
+    def test_add_project_unmarked_refused(self):
+        bare = self.tmp / "bare"
+        bare.mkdir()
+        (self.tmp / "file.txt").write_text("x")
+        before = self.project_ids()
+        for path in (str(bare), str(self.tmp / "missing"), str(self.tmp / "file.txt"), "relative/proj", "../proj",
+                     "", "~other/proj", "x" * 4097, 7, None, ["/"]):
+            for extra in ({}, {"create_specs": True}, {"dry_run": True}):
+                status, body = self.add({"path": path, **extra})
+                self.assertEqual(status, 400, (path, extra, body))
+        status, body = self.add({"path": str(bare), "create_specs": True})
+        self.assertIn(".SDD, .git, .claude", body["error"])
+        self.assertEqual(self.tree(bare), [], "nothing is created in an unmarked folder")
+        self.assertEqual(self.add({})[0], 400)
+        self.assertEqual(self.add({"path": str(self.root), "dry_run": "yes"})[0], 400)
+        self.assertEqual(self.add({"path": str(self.root), "create_specs": 1})[0], 400)
+        self.assertEqual(self.project_ids(), before)
+
+    def test_add_project_dry_run_changes_nothing(self):
+        new = helpers.make_project(self.tmp, "new")
+        link = self.tmp / "link"
+        os.symlink(new, link)
+        stream = Stream(self.d.port, self.d.ui_token)
+        try:
+            stream.next("hello")
+            before = self.project_ids()
+            status, body = self.add({"path": str(link), "create_specs": True, "dry_run": True})
+            self.assertEqual(status, 200, body)
+            self.assertEqual(body, {"resolved": str(new), "name": "new", "markers": [".git"], "has_specs": False,
+                                    "already_registered": False, "is_home": False, "would_create": [".SDD/specs"]})
+            self.assertEqual(self.tree(new), [".git"])
+            self.assertEqual(self.project_ids(), before)
+            status, body = self.add({"path": str(self.root), "dry_run": True})
+            self.assertEqual((body["already_registered"], body["has_specs"], body["would_create"]), (True, True, []))
+            self.assertIsNone(stream.next("project.registered", timeout=0.5), "a dry run publishes nothing")
+        finally:
+            stream.close()
+
+    def test_add_project_home_flag(self):
+        for path in ("~", "~/", str(self.fake_home)):
+            status, body = self.add({"path": path, "dry_run": True})
+            self.assertEqual(status, 200, body)
+            self.assertEqual((body["resolved"], body["is_home"], body["markers"]),
+                             (str(self.fake_home.resolve()), True, [".claude"]), path)
+        status, body = self.add({"path": "~/.claude/..", "dry_run": True})
+        self.assertEqual((body["resolved"], body["is_home"]), (str(self.fake_home.resolve()), True))
+        status, body = self.add({"path": "/", "dry_run": True})  # the marker rule decides for `/`
+        if status == 200:
+            self.assertEqual((body["resolved"], body["is_home"]), ("/", False))
+        else:
+            self.assertEqual(status, 400, body)
+
+    def test_add_project_create_specs_only(self):
+        new = helpers.make_project(self.tmp, "new")
+        stream = Stream(self.d.port, self.d.ui_token, self.pid)  # a board watching another project hears it too
+        try:
+            stream.next("hello")
+            status, body = self.add({"path": str(new), "create_specs": True})
+            self.assertEqual(status, 200, body)
+            pid = kdb.project_id_for(new)
+            self.assertEqual(body, {"project": {"id": pid, "name": "new", "root": str(new)}, "resolved": str(new),
+                                    "created": [".SDD/specs"]})
+            self.assertEqual(self.tree(new), [".SDD", ".SDD/specs", ".git"])
+            ev = stream.next("project.registered")
+            self.assertEqual(ev["data"], {"id": pid, "name": "new"})
+            status, again = self.add({"path": str(new), "create_specs": True})  # known: the project, no event
+            self.assertEqual((status, again["project"]["id"], again["created"]), (200, pid, []))
+            self.assertIsNone(stream.next("project.registered", timeout=0.5))
+        finally:
+            stream.close()
+        self.assertIn(pid, self.project_ids())
+        plain = helpers.make_project(self.tmp, "plain")
+        status, body = self.add({"path": str(plain)})
+        self.assertEqual((status, body["created"]), (200, []))
+        self.assertEqual(self.tree(plain), [".git"])
+
+    def test_add_project_create_specs_failure_is_500(self):
+        ro = helpers.make_project(self.tmp, "readonly")
+        ro.chmod(0o555)
+        self.addCleanup(ro.chmod, 0o755)
+        before = self.project_ids()
+        status, body = self.add({"path": str(ro), "create_specs": True})
+        self.assertEqual(status, 500, body)
+        self.assertIn("ermission", body["error"])
+        self.assertEqual(self.project_ids(), before)
+
+    def test_delete_with_live_run_409(self):
+        store = kdb.Store(kdb.db_path(self.d.home))
+        self.addCleanup(store.close)
+        run = kdb.create_run(store.conn(), self.pid, "login", "architect", "headless", status="waiting")
+        status, body = self.d.call("DELETE", f"/api/projects/{self.pid}", token="ui")
+        self.assertEqual(status, 409, body)
+        self.assertIn("1 run", body["error"])
+        self.assertIn(self.pid, self.project_ids())
+        kdb.transition_run(store.conn(), run["id"], "cancelled")
+        self.assertEqual(self.d.call("DELETE", f"/api/projects/{self.pid}", token="ui"), (200, {"removed": self.pid}))
+        self.assertEqual(self.d.call("DELETE", f"/api/projects/{self.pid}", token="ui")[0], 404)
+        self.assertEqual(self.d.call("DELETE", "/api/projects/nope", token="ui")[0], 404)
+
+    def test_delete_project_tombstone_410(self):
+        before = self.tree(self.root)
+        sid = self.session["session_id"]
+        board = Stream(self.d.port, self.d.ui_token, self.pid)
+        everything = Stream(self.d.port, self.d.ui_token)
+        live = Stream(self.d.port, self.d.client_token, session=sid)  # all-projects subscription of the session
+        other = helpers.make_project(self.tmp, "other")
+        other_pid = self.d.register(other)["project_id"]
+        other_board = Stream(self.d.port, self.d.ui_token, other_pid)
+        try:
+            for s in (board, everything, live, other_board):
+                s.next("hello")
+            status, body = self.d.call("DELETE", f"/api/projects/{self.pid}", token="ui")
+            self.assertEqual((status, body), (200, {"removed": self.pid}))
+            for s in (board, everything, other_board):
+                ev = s.next("project.removed")
+                self.assertIsNotNone(ev, "project.removed reaches every board")
+                self.assertEqual(ev["data"], {"id": self.pid})
+            self.assertTrue(ended(board), "the removed project's stream is closed")
+            self.assertTrue(ended(live), "the removed sessions' subscriptions are closed")
+            self.assertFalse(ended(everything, timeout=0.5))
+            self.assertFalse(ended(other_board, timeout=0.5))
+        finally:
+            for s in (board, everything, live, other_board):
+                s.close()
+        self.assertNotIn(self.pid, self.project_ids())
+        self.assertEqual(self.tree(self.root), before, "files untouched")
+        store = kdb.Store(kdb.db_path(self.d.home))
+        self.addCleanup(store.close)
+        self.assertIsNone(kdb.get_session(store.conn(), sid))
+        self.assertEqual(self.d.get(f"/api/projects/{self.pid}/board")[0], 404)
+        status, body = self.d.call("POST", "/api/sessions", {"project_root": str(self.root), "claude_pid": 1})
+        self.assertEqual((status, body), (410, {"error": "project removed from the board"}))
+        self.assertNotIn(self.pid, self.project_ids(), "a refused session does not re-add the project")
+        # daemon.py --open (client POST /api/projects) is an explicit re-add
+        self.assertEqual(self.d.call("POST", "/api/projects", {"project_root": str(self.root)})[0], 200)
+        self.assertEqual(self.d.call("POST", "/api/sessions", {"project_root": str(self.root)})[0], 200)
+
+    def test_readd_clears_tombstone(self):
+        self.assertEqual(self.d.call("DELETE", f"/api/projects/{self.pid}", token="ui")[0], 200)
+        self.assertEqual(self.d.call("POST", "/api/sessions", {"project_root": str(self.root)})[0], 410)
+        self.restart()  # the tombstone survives a restart
+        self.assertEqual(self.d.call("POST", "/api/sessions", {"project_root": str(self.root)})[0], 410)
+        status, body = self.add({"path": str(self.root)})
+        self.assertEqual((status, body["project"]["id"]), (200, self.pid))  # same folder, same id
+        self.assertEqual(self.d.call("POST", "/api/sessions", {"project_root": str(self.root)})[0], 200)
+
+
+class OnboardingTests(DaemonCase):
+    """v0.3.1 PRD-03 step 8: connected / first_move / dismissed / plugin_python (Q16, re-review N3)."""
+
+    def state(self):
+        status, body = self.d.get(f"/api/projects/{self.pid}/onboarding", token="ui")
+        self.assertEqual(status, 200, body)
+        return body
+
+    def test_onboarding_state(self):
+        got = self.state()
+        self.assertEqual(sorted(got), ["connected", "dismissed", "first_move", "plugin_python",
+                                       "plugin_python_source"])
+        self.assertEqual((got["connected"], got["first_move"], got["dismissed"], got["plugin_python_source"]),
+                         (False, False, False, "hint"))
+        self.assertIn(got["plugin_python"], ("bundled", "system", "missing"))
+        self.assertEqual(self.d.get("/api/projects/nope/onboarding", token="ui")[0], 404)
+        # a live interactive session without channels does not connect; one with channels does
+        plain = Stream(self.d.port, self.d.client_token, self.pid, session=self.session["session_id"])
+        plain.next("hello")
+        self.assertEqual(self.state()["connected"], False)
+        channel = self.d.register(self.root, channel=True)["session_id"]
+        live = Stream(self.d.port, self.d.client_token, self.pid, session=channel)
+        live.next("hello")
+        self.assertEqual(self.state()["connected"], True)
+        live.close()
+        plain.close()
+        end = time.time() + 3
+        while time.time() < end and self.state()["connected"]:
+            time.sleep(0.05)
+        self.assertEqual(self.state()["connected"], False)
+        # first_move after one UI move (a Claude move through the markdown does not count)
+        km.move_ticket(self.root, "login", "architect")
+        self.assertEqual(self.state()["first_move"], False)
+        self.assertEqual(self.move("discovery")[0], 200)
+        self.assertEqual(self.state()["first_move"], True)
+        # dismissed: bool only, UI token only, persists across a daemon restart
+        path = f"/api/projects/{self.pid}/onboarding"
+        for bad in ({}, {"dismissed": "true"}, {"dismissed": 1}, {"dismissed": None}):
+            self.assertEqual(self.d.call("POST", path, bad, token="ui")[0], 400, bad)
+        self.assertEqual(self.d.call("POST", path, {"dismissed": True})[0], 403)
+        status, body = self.d.call("POST", path, {"dismissed": True}, token="ui")
+        self.assertEqual((status, body["dismissed"], body["first_move"]), (200, True, True))
+        self.restart()
+        self.assertEqual((self.state()["dismissed"], self.state()["first_move"]), (True, True))
+        status, body = self.d.call("POST", path, {"dismissed": False}, token="ui")
+        self.assertEqual((status, body["dismissed"]), (200, False))
+
+    def test_session_python_report(self):
+        path = "/api/sessions"
+        bundled = self.d.call("POST", path, {"project_root": str(self.root), "python": "bundled"})[1]["session_id"]
+        system = self.d.call("POST", path, {"project_root": str(self.root), "python": "system"})[1]["session_id"]
+        self.assertEqual(self.state()["plugin_python_source"], "hint")
+        a = Stream(self.d.port, self.d.client_token, self.pid, session=system)
+        a.next("hello")
+        self.assertEqual((self.state()["plugin_python"], self.state()["plugin_python_source"]), ("system", "session"))
+        b = Stream(self.d.port, self.d.client_token, self.pid, session=bundled)
+        b.next("hello")
+        self.assertEqual((self.state()["plugin_python"], self.state()["plugin_python_source"]), ("bundled", "session"))
+        b.close()
+        end = time.time() + 3
+        while time.time() < end and self.state()["plugin_python"] != "system":
+            time.sleep(0.05)
+        self.assertEqual((self.state()["plugin_python"], self.state()["plugin_python_source"]), ("system", "session"))
+        a.close()
+        end = time.time() + 3
+        while time.time() < end and self.state()["plugin_python_source"] != "hint":
+            time.sleep(0.05)
+        self.assertEqual(self.state()["plugin_python_source"], "hint")
 
 
 if __name__ == "__main__":

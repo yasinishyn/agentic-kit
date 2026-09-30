@@ -1,6 +1,6 @@
 """Abuse checklist probes (sdd abuse-checklist AB-01..AB-11, harness A: raw HTTP) against a throwaway kanban daemon.
 Run by tests/test_abuse.py; temporary KANBAN_HOME and projects only; exits 1 if any probe fails."""
-import hashlib, http.client, json, os, subprocess, sys, tempfile, time
+import hashlib, http.client, json, os, shutil, subprocess, sys, tempfile, time
 from pathlib import Path
 
 PLUGIN = Path(__file__).resolve().parents[2]
@@ -158,9 +158,50 @@ try:
     row("AB-11.2", "JSON content type on API", "application/json", hdr.get("Content-Type") == "application/json", hdr.get("Content-Type"))
     s, _, b, _ = req("POST", f"{base}/tickets/demo-login/move", None, ui, raw=b"{not json")
     row("AB-11.3", "malformed JSON body", "400, no stack trace", s == 400 and b"Traceback" not in b, s)
+
+    # AB-12 v0.3.1 routes: add/remove project, sessions, onboarding (ADR-006)
+    bare = Path(tempfile.mkdtemp(prefix="kb-bare-"))
+    for rid, m, path, body in [("AB-12.1", "POST", "/api/projects/add", {"path": str(proj), "dry_run": True}),
+                               ("AB-12.2", "DELETE", base, None),
+                               ("AB-12.3", "POST", f"{base}/onboarding", {"dismissed": True})]:
+        s, *_ = req(m, path, body, cl)
+        row(rid, f"client (Claude) token on {m} {path.replace(base, '…')}", "403", s == 403, s)
+    s, j, *_ = req("GET", "/api/projects", None, ui)
+    row("AB-12.4", "project still registered after the refused DELETE", "listed", pid in [p["id"] for p in j["projects"]], pid)
+    s, *_ = req("POST", "/api/projects/add", {"path": str(bare)}, ui)
+    row("AB-12.5", "add an unmarked folder", "400", s == 400, s)
+    s, *_ = req("POST", "/api/projects/add", {"path": str(bare), "create_specs": True}, ui)
+    row("AB-12.6", "create_specs on an unmarked folder", "400, nothing created", s == 400 and not any(bare.iterdir()), s)
+    for rid, path in [("AB-12.7", "../" + proj.name), ("AB-12.8", "relative/dir"), ("AB-12.9", str(proj) + "/../../nope-x"),
+                      ("AB-12.10", str(proj) + "\x00"), ("AB-12.11", "/" + "a" * 5000), ("AB-12.12", "~root")]:
+        s, *_ = req("POST", "/api/projects/add", {"path": path, "dry_run": True}, ui)
+        row(rid, f"add path {path[:40]!r}", "400", s == 400, s)
+    before = sorted(str(p) for p in proj.rglob("*"))
+    s, j, *_ = req("POST", "/api/projects/add", {"path": str(proj), "create_specs": True, "dry_run": True}, ui)
+    row("AB-12.13", "dry run on a registered project", "200 preview, nothing changed", s == 200 and j.get("already_registered") is True and sorted(str(p) for p in proj.rglob("*")) == before, s)
+    s, *_ = req("DELETE", "/api/projects/nope", None, ui)
+    row("AB-12.14", "DELETE of an unknown project id", "404", s == 404, s)
+    s, *_ = req("DELETE", "/api/projects/..%2F..", None, ui)
+    row("AB-12.15", "DELETE with an encoded traversal id", "404", s == 404, s)
+    s, *_ = req("POST", f"{base}/onboarding", {"dismissed": "yes"}, ui)
+    row("AB-12.16", "onboarding dismissed not a bool", "400", s == 400, s)
+    s1, *_ = req("GET", f"{base}/sessions")
+    s2, *_ = req("GET", f"{base}/onboarding")
+    row("AB-12.17", "sessions / onboarding without a token", "401 both", s1 == 401 and s2 == 401, f"{s1}/{s2}")
+    s1, *_ = req("GET", "/api/projects/nope/sessions", None, ui)
+    s2, *_ = req("GET", "/api/projects/nope/onboarding", None, ui)
+    row("AB-12.18", "sessions / onboarding of an unknown project", "404 both", s1 == 404 and s2 == 404, f"{s1}/{s2}")
+    s, j, *_ = req("POST", "/api/sessions", {"project_root": str(other), "origin": "headless", "python": "evil"}, cl)
+    s2, j2, *_ = req("GET", f"/api/projects/{oid}/sessions", None, ui)
+    with sqlite3.connect(home / "kanban.db") as _db:
+        got = _db.execute("select origin, python from sessions where id=?", (j["session_id"],)).fetchone()
+    row("AB-12.19", "session posting origin=headless / python=evil", "stored unknown/unknown", s == 200 and tuple(got) == ("unknown", "unknown"), got)
+    s, j, *_ = req("DELETE", f"/api/projects/{oid}", None, ui)
+    s2, j2, *_ = req("POST", "/api/sessions", {"project_root": str(other)}, cl)
+    row("AB-12.20", "session registration after the project was removed", "410", s == 200 and s2 == 410, f"{s}/{s2}")
+    shutil.rmtree(bare, ignore_errors=True)
 finally:
     d.terminate(); d.wait(timeout=10)
-    import shutil
     for p in (home, proj, other): shutil.rmtree(p, ignore_errors=True)
 fails = [r for r in rows if r[3] == "FAIL"]
 print(f"abuse probes: {len(rows) - len(fails)}/{len(rows)} passed")

@@ -71,6 +71,25 @@ class AuthTests(unittest.TestCase):
         status, _, raw = self.raw("POST", f"{p}/tickets/login/approve-chat", {}, "client", session)
         self.assertEqual(status, 200, raw)
 
+    def test_new_routes_ui_only(self):
+        """v0.3.1 (ADR-006): add/remove project and the onboarding dismiss are human-only; the reads are open to both."""
+        p = f"/api/projects/{self.pid}"
+        for method, path, body in (("POST", "/api/projects/add", {"path": str(self.root), "dry_run": True}),
+                                   ("DELETE", p, None),
+                                   ("POST", f"{p}/onboarding", {"dismissed": False})):
+            for token in ("client", "wrong-token", None):
+                status, _, raw = self.raw(method, path, body, token)
+                self.assertEqual(status, 403 if token == "client" else 401, f"{method} {path} {token}: {raw[:200]}")
+            self.assertTrue(kd._ui_only(method, path), path)
+        self.assertEqual(self.raw("POST", "/api/projects/add", {"path": str(self.root), "dry_run": True}, "ui")[0], 200)
+        self.assertEqual(self.raw("POST", f"{p}/onboarding", {"dismissed": False}, "ui")[0], 200)
+        for path in (f"{p}/sessions", f"{p}/onboarding"):
+            for token in ("client", "ui"):
+                self.assertEqual(self.raw("GET", path, None, token)[0], 200, (path, token))
+        self.assertEqual(self.raw("GET", f"{p}/sessions", None, None)[0], 401)
+        self.assertEqual(self.raw("POST", f"{p}/onboarding/x", {}, "ui")[0], 404)
+        self.assertEqual(self.raw("PUT", "/api/projects/add", {}, "ui")[0], 405)
+
     def test_host_and_origin(self):
         for headers in ({"Host": "evil.com"}, {"Host": "evil.com:80"},
                         {"Origin": "http://evil.com"}, {"Origin": "http://127.0.0.1:1"}):

@@ -6,7 +6,7 @@
     {
       "name": "kanban",
       "source": "./plugins/kanban",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "description": "An agent board over your .SDD/specs: one local board for all projects (desktop app or browser), board moves hand work to Claude (channels or headless runs), live activity, spec approval, MCP tools; SDD-aware."
     }
   ]

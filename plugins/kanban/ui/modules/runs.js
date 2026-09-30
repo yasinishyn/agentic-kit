@@ -7,7 +7,8 @@
    offers "Stop" (UI token), and permission_denials of a headless run show as a badge. run.event / run.changed are
    forwarded as a "kanban:run-event" window event for the transcript panel (transcript.js). A headless run that ended
    after kanban_finish(needs_input) shows an amber "needs input: <needs_input_summary>" badge (announced) until the
-   ticket is moved or a new run starts. */
+   ticket is moved or a new run starts. A queued hand-off with no channel session (or one nobody picked up) explains
+   why on the card ("Why queued?"), with Copy prompt / Run headless right there (v0.3.1 PRD-05, FR-06). */
 (function () {
   "use strict";
 
@@ -73,6 +74,11 @@
 
   function paint(card, ticketId) {
     const old = card.querySelector(".run-indicator");
+    if (old && old.contains(document.activeElement)) {  // keep keyboard focus on "Why queued?" across the tick
+      const same = describe(ticketId);
+      const text = old.querySelector(".run-text");
+      if (same && text && old.classList.contains(`run-${same.cls}`)) { text.textContent = same.text; return; }
+    }
     if (old) old.remove();
     card.classList.remove("run-live", "run-card-waiting");
     for (const li of card.querySelectorAll(".st.st-live")) li.classList.remove("st-live");
@@ -87,6 +93,11 @@
       box.append(el("span", {className: "run-denials", text: `${denials} permission denial${denials > 1 ? "s" : ""}`,
                              title: "Tools were refused in the headless run; open the card to read the transcript"}));
     }
+    const handoff = state.handoffs.get(ticketId);
+    if (d && d.cls === "queued" && handoff && !(run && LIVE.includes(run.status)) &&
+        (handoff.pickup || !channelsOn())) {
+      box.append(queuedWhy(card, ticketId));
+    }
     const head = card.querySelector(".card-head");
     if (head && head.nextSibling) card.insertBefore(box, head.nextSibling);
     else card.append(box);
@@ -98,6 +109,32 @@
       }
     }
   }
+
+  const QUEUED_WHY =
+    "No Claude session with channels is connected to this project — Code-tab sessions don't receive board moves. " +
+    "Paste the prompt into a session, or let the board run it headless.";
+
+  function channelsOn() {
+    const sessions = typeof K.sessions === "function" ? K.sessions() : [];
+    return sessions.some((s) => s.kind === "interactive" && s.channel);
+  }
+
+  /* The explanation on a queued card, with the two ways forward; open state survives repaints. */
+  function queuedWhy(card, ticketId) {
+    const ticket = {id: ticketId};
+    const copy = el("button", {type: "button", text: "Copy prompt", draggable: "false"});
+    copy.addEventListener("click", (e) => { e.stopPropagation(); copyPrompt(ticket); });
+    const headless = el("button", {type: "button", text: "Run headless", draggable: "false"});
+    headless.addEventListener("click", (e) => { e.stopPropagation(); runHeadless(ticket); });
+    const why = el("details", {className: "run-why", open: whyOpen.has(ticketId)}, [
+      el("summary", {text: "Why queued?"}),
+      el("p", {text: QUEUED_WHY}),
+      el("div", {className: "run-why-actions"}, [copy, headless]),
+    ]);
+    why.addEventListener("toggle", () => { if (why.open) whyOpen.add(ticketId); else whyOpen.delete(ticketId); });
+    return why;
+  }
+  const whyOpen = new Set();
 
   function paintAll(announce) {
     for (const card of document.querySelectorAll(".card[data-ticket]")) paint(card, card.dataset.ticket);
@@ -164,6 +201,8 @@
     }
     if (["run.changed", "handoff.created", "handoff.pickup_timeout", "board.changed"].includes(ev.event)) {
       scheduleLoad();
+    } else if (ev.event === "session.changed") {
+      window.setTimeout(() => paintAll(false), 400);  // after the core refetched the session list
     }
   }
 

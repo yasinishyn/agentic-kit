@@ -18,7 +18,10 @@ response carries the CSP of architecture §8. Rejected requests read and discard
 Events: `GET /api/events[?project=<id>]` answers 200 with `Content-Type: application/x-ndjson` and keeps the response
 open: one JSON object per line, `{"id", "event", "project", "data", "at"}`; the first line is `hello`, a `ping` line
 is sent after 15 s of silence, the stream ends when the daemon stops. At most 32 subscribers (503 beyond). A
-subscription sent with `X-Kanban-Session: <session id>` makes that session live (ctx.live_sessions) while it is open.
+subscription sent with `X-Kanban-Session: <session id>` makes that session live (ctx.live_sessions) while it is open;
+`session.changed {session: {id, kind, origin, channel}, live}` is published to the session's project when it registers
+and when such a subscription opens or closes. Removing a project publishes `project.removed {id}` to every subscriber
+and then closes that project's subscriptions and those of its sessions.
 
 Plug-ins: every `scripts/routes_*.py` (plus KANBAN_ROUTES_DIRS, os.pathsep-separated, for tests) is imported at start in
 name order and its `register(ctx)` called; a module that fails is logged and skipped (see PluginContext).
@@ -58,7 +61,7 @@ import kanban_rules as rules  # noqa: E402
 import mdview  # noqa: E402
 
 API = int(os.environ.get("KANBAN_DAEMON_API") or 1)  # env overrides exist for tests (version negotiation)
-VERSION = os.environ.get("KANBAN_DAEMON_VERSION") or "0.3.0"
+VERSION = os.environ.get("KANBAN_DAEMON_VERSION") or "0.3.1"
 DEFAULT_PORT = 47821
 UI_DIR = Path(os.environ.get("KANBAN_UI_DIR") or SCRIPTS.parent / "ui").resolve()
 EDITOR_URL = os.environ.get("KANBAN_EDITOR_URL", "vscode://file/{path}")
@@ -76,11 +79,17 @@ TICKET_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 UI_ONLY = (("POST", re.compile(r"^/api/projects/[^/]+/tickets/[^/]+/(move|approve)$")),
            ("POST", re.compile(r"^/api/projects/[^/]+/tickets$")),  # New ticket from the board (B14)
            ("PUT", re.compile(r"^/api/projects/[^/]+/files(/.*)?$")),
-           ("POST", re.compile(r"^/api/(.+/)?runs(/[^/]+)?/(start|stop)$")))
+           ("POST", re.compile(r"^/api/(.+/)?runs(/[^/]+)?/(start|stop)$")),
+           ("POST", re.compile(r"^/api/projects/add$")),  # Add project (v0.3.1, ADR-006)
+           ("DELETE", re.compile(r"^/api/projects/[^/]+$")),  # Remove project
+           ("POST", re.compile(r"^/api/projects/[^/]+/onboarding$")))  # dismiss the welcome
 CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
                  ".css": "text/css; charset=utf-8", ".json": "application/json", ".svg": "image/svg+xml",
                  ".png": "image/png", ".woff2": "font/woff2", ".map": "application/json"}
 STREAMED = object()  # a handler that wrote its own response returns this
+SENT_ORIGINS = ("cli", "cli-print", "code-tab", "unknown")  # "headless" is derived here, never taken from a body
+MAX_PATH = 4096
+HINT_SECONDS = 30.0
 
 
 def log(msg: str) -> None:
@@ -189,6 +198,7 @@ class Subscriber:
         self.project, self.session_id = project, session_id
         self.queue = queue.Queue(maxsize=512)
         self.overflow = False
+        self.closed = False  # set by EventBus.close: the stream ends once its queue is written
 
 
 class EventBus:
@@ -224,6 +234,15 @@ class EventBus:
     def session_ids(self) -> set:
         with self.lock:
             return {s.session_id for s in self.subs if s.session_id}
+
+    def close(self, project_id: str, session_ids=()) -> int:
+        """End the subscriptions of a project and of the given sessions (after their queued events are written)."""
+        sessions = set(session_ids)
+        with self.lock:
+            subs = [s for s in self.subs if s.project == project_id or (s.session_id and s.session_id in sessions)]
+            for sub in subs:
+                sub.closed = True
+        return len(subs)
 
 
 def _peer_closed(sock) -> bool:
@@ -371,6 +390,75 @@ def project_root(body: dict) -> str:
 
 def _ui_only(method: str, path: str) -> bool:
     return any(m == method and rx.match(path) for m, rx in UI_ONLY)
+
+
+# ---------------------------------------------------------------- plugin python hint (mirrors scripts/kpython)
+_HINT_CACHE: dict = {}
+_HINT_LOCK = threading.Lock()
+
+
+def _runs(*argv) -> bool:
+    try:
+        return subprocess.run(list(map(str, argv)), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                              stderr=subprocess.DEVNULL, timeout=10).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def _which(name: str, path: str) -> str | None:
+    for folder in path.split(os.pathsep):
+        if folder:
+            candidate = folder.rstrip("/") + "/" + name
+            if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+                return candidate
+    return None
+
+
+def plugin_python_hint(home=None, path: str | None = None, apps=None, fresh: bool = False) -> str:
+    """'bundled' | 'system' | 'missing': what `sh kpython` would choose for this user (same order and checks: the
+    Kanban.app bundles in ~/Applications then /Applications (KANBAN_APPLICATIONS_DIR), run-checked; then the first
+    python3 >= 3.9 on PATH, /usr/bin/python3 only with `xcode-select -p`). Cached 30 s per (home, path, apps)."""
+    home = Path(home) if home else Path.home()
+    path = os.environ.get("PATH", "") if path is None else path
+    apps = Path(apps) if apps else Path(os.environ.get("KANBAN_APPLICATIONS_DIR") or "/Applications")
+    key = (str(home), path, str(apps))
+    with _HINT_LOCK:
+        hit = _HINT_CACHE.get(key)
+    if hit and not fresh and time.time() - hit[0] < HINT_SECONDS:
+        return hit[1]
+    result = "missing"
+    if sys.platform == "darwin":
+        arch = os.uname().machine
+        arch = "arm64" if arch == "aarch64" else arch
+        for base in (home / "Applications", apps):
+            candidate = f"{base}/Kanban.app/Contents/Resources/python/{arch}/bin/python3"
+            if os.access(candidate, os.X_OK) and _runs(candidate, "-E", "-B", "-c", "import sys"):
+                result = "bundled"
+                break
+    if result == "missing":
+        for folder in path.split(os.pathsep):
+            if not folder:
+                continue
+            candidate = folder.rstrip("/") + "/python3"
+            if not (os.path.isfile(candidate) and os.access(candidate, os.X_OK)):
+                continue
+            if candidate == "/usr/bin/python3":
+                xcode = _which("xcode-select", path)
+                if not xcode or not _runs(xcode, "-p"):
+                    continue
+            if _runs(candidate, "-c", "import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)"):
+                result = "system"
+                break
+    with _HINT_LOCK:
+        _HINT_CACHE[key] = (time.time(), result)
+    return result
+
+
+def _flag(body: dict, key: str) -> bool:
+    value = body.get(key, False)
+    if not isinstance(value, bool):
+        raise ApiError(400, f"{key} must be true or false")
+    return value
 
 
 # ---------------------------------------------------------------- board
@@ -608,6 +696,106 @@ class Daemon:
         r("POST", "/api/projects/{project}/tickets/{ticket}/approve", self.h_approve, "ui")
         r("POST", "/api/projects/{project}/tickets/{ticket}/approve-chat", self.h_approve_chat, "client")
         r("POST", "/api/shutdown", self.h_shutdown, "client")
+        # v0.3.1 (PRD-03): connection panel, welcome state, add/remove project from the UI
+        r("GET", "/api/projects/{project}/sessions", self.h_sessions, "read")
+        r("GET", "/api/projects/{project}/onboarding", self.h_onboarding, "read")
+        r("POST", "/api/projects/{project}/onboarding", self.h_onboarding_set, "ui")
+        r("POST", "/api/projects/add", self.h_ui_add_project, "ui")
+        r("DELETE", "/api/projects/{project}", self.h_remove_project, "ui")
+
+    # ---- sessions (v0.3.1)
+    @staticmethod
+    def session_view(session: dict) -> dict:
+        return {"id": session["id"], "kind": session["kind"], "origin": session["origin"],
+                "channel": bool(session["channel"])}
+
+    def session_changed(self, session_id: str, live: bool) -> None:
+        """Publish session.changed to the session's project (called outside the bus lock); nothing for a session
+        that no longer exists (its project was removed)."""
+        try:
+            session = kdb.get_session(self.store.conn(), session_id)
+        except Exception as exc:  # a label event never breaks a stream or a registration
+            log(f"session.changed for {session_id}: {exc!r}")
+            return
+        if session is not None:
+            self.bus.publish(session["project_id"], "session.changed", {"session": self.session_view(session),
+                                                                        "live": live})
+
+    def h_sessions(self, req):
+        project = req.project()
+        return {"sessions": [{**self.session_view(s), "last_seen": s["last_seen"], "run_id": s["run_id"]}
+                             for s in self.live_sessions(project["id"])]}
+
+    # ---- onboarding (v0.3.1, Q16: daemon settings, shared by the app window and browser tabs)
+    def onboarding_state(self, project_id: str) -> dict:
+        settings, live = self.ctx.settings, self.live_sessions(project_id)
+        if live:
+            python = "bundled" if any(s["python"] == "bundled" for s in live) else "system"
+            source = "session"
+        else:
+            python, source = plugin_python_hint(), "hint"
+        return {"connected": any(s["kind"] == "interactive" and s["channel"] for s in live),
+                "first_move": settings.get(f"onboarding.first_move.{project_id}") is not None,
+                "dismissed": settings.get(f"onboarding.dismissed.{project_id}") == "1",
+                "plugin_python": python, "plugin_python_source": source}
+
+    def h_onboarding(self, req):
+        return self.onboarding_state(req.project()["id"])
+
+    def h_onboarding_set(self, req):
+        project = req.project()
+        if "dismissed" not in req.json:
+            raise ApiError(400, "dismissed must be true or false")
+        dismissed = _flag(req.json, "dismissed")
+        self.ctx.settings.set(f"onboarding.dismissed.{project['id']}", "1" if dismissed else "0")
+        return self.onboarding_state(project["id"])
+
+    # ---- add / remove project from the UI (v0.3.1, ADR-006)
+    def h_ui_add_project(self, req):
+        body, conn = req.json, req_conn(req)
+        path = body.get("path")
+        if not isinstance(path, str) or not path or len(path) > MAX_PATH or "\x00" in path:
+            raise ApiError(400, f"path must be a non-empty string of at most {MAX_PATH} characters")
+        create_specs, dry_run = _flag(body, "create_specs"), _flag(body, "dry_run")
+        home = Path.home()
+        if path == "~" or path.startswith("~/"):
+            path = str(home) + path[1:]
+        if not Path(path).is_absolute():
+            raise ApiError(400, "path must be absolute (or start with ~/)")
+        resolved = Path(path).resolve()
+        if not resolved.is_dir():
+            raise ApiError(400, "path must be an existing directory")
+        markers = [m for m in PROJECT_MARKERS if (resolved / m).exists()]  # the folder as-is, before any creation
+        if not markers:
+            raise ApiError(400, f"the folder must contain one of {', '.join(PROJECT_MARKERS)}")
+        has_specs = km.specs_dir(resolved).is_dir()
+        would_create = [".SDD/specs"] if create_specs and not has_specs else []
+        if dry_run:
+            return {"resolved": str(resolved), "name": resolved.name, "markers": markers, "has_specs": has_specs,
+                    "already_registered": kdb.get_project(conn, kdb.project_id_for(resolved)) is not None,
+                    "is_home": resolved == home.resolve(), "would_create": would_create}
+        if would_create:
+            try:
+                km.specs_dir(resolved).mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                raise ApiError(500, f"could not create .SDD/specs: {exc.strerror or exc}")
+        project = self.register_project(conn, {"project_root": str(resolved)})
+        return {"project": {"id": project["id"], "name": project["name"], "root": project["root"]},
+                "resolved": str(resolved), "created": would_create}
+
+    def h_remove_project(self, req):
+        project, conn = req.project(), req_conn(req)
+        pid = project["id"]
+        live = kdb.live_runs(conn, pid)
+        if live:
+            raise ApiError(409, f"{len(live)} run(s) are live in this project; stop them first", live_runs=len(live))
+        self.ctx.settings.set(f"project.removed.{pid}", time.time())  # first: a racing registration gets 410
+        sessions = kdb.remove_project(conn, pid)
+        with self.sig_lock:
+            self.signatures.pop(pid, None)
+        self.bus.publish(None, "project.removed", {"id": pid})  # queued before the streams are closed
+        self.bus.close(pid, sessions)
+        return {"removed": pid}
 
     def h_health(self, req):
         return {"api": API, "version": VERSION, "pid": os.getpid(), "live_runs": len(kdb.live_runs(req_conn(req))),
@@ -622,6 +810,7 @@ class Daemon:
         root = project_root(body)
         known = kdb.get_project(conn, kdb.project_id_for(Path(root).resolve())) is not None
         project = kdb.register_project(conn, root)
+        self.ctx.settings.delete(f"project.removed.{project['id']}")  # an explicit add clears a removal
         self.baseline(project)
         if not known:
             self.bus.publish(None, "project.registered", {"id": project["id"], "name": project["name"]})
@@ -633,14 +822,22 @@ class Daemon:
 
     def h_session(self, req):
         body, conn = req.json, req_conn(req)
+        root = project_root(body)
+        if self.ctx.settings.get(f"project.removed.{kdb.project_id_for(Path(root).resolve())}") is not None:
+            raise ApiError(410, "project removed from the board")
         project = self.register_project(conn, body)
         # kind and run_id are derived server-side (the body's are ignored): a session is headless only when its
         # claude process is the one a live headless run of this project recorded (pid + start time)
         run = headless_run_for(conn, project["id"], body.get("claude_pid"))
         kind, run_id = ("headless", run["id"]) if run else ("interactive", None)
         start = run["claude_start_time"] if run else body.get("claude_start_time", "")
+        sent_origin, sent_python = body.get("origin"), body.get("python")
+        origin = "headless" if run else (sent_origin if sent_origin in SENT_ORIGINS else "unknown")
+        python = sent_python if sent_python in kdb.SESSION_PYTHONS else "unknown"
         session = kdb.register_session(conn, project["id"], kind, body.get("claude_pid"), start,
-                                       channel=bool(body.get("channel")) and not run, run_id=run_id)
+                                       channel=bool(body.get("channel")) and not run, run_id=run_id,
+                                       origin=origin, python=python)
+        self.session_changed(session["id"], session["id"] in self.bus.session_ids())
         return {"session_id": session["id"], "project_id": project["id"], "kind": session["kind"], "api": API,
                 "version": VERSION}
 
@@ -680,6 +877,8 @@ class Daemon:
                 raise ApiError(409, text, reason=reason)
             kind = rules.handoff_kind(src, dst, actor)
             handoff = kdb.create_handoff(req_conn(req), pid, ticket, kind, src, dst, actor) if kind else None
+        if self.ctx.settings.get(f"onboarding.first_move.{pid}") is None:  # welcome step 3, set once
+            self.ctx.settings.set(f"onboarding.first_move.{pid}", time.time())
         self.bus.publish(pid, "board.changed", {"ticket": ticket, "from": src, "to": dst, "source": "move"})
         if handoff:
             self.bus.publish(pid, "handoff.created", {k: handoff[k] for k in (
@@ -744,6 +943,8 @@ class Daemon:
         if sub is None:
             raise ApiError(503, f"too many event subscribers (max {MAX_SUBSCRIBERS})")
         h = req.handler
+        if session_id:
+            self.session_changed(session_id, True)
         try:
             h.send_response(200)
             h.send_common_headers("application/x-ndjson")
@@ -763,12 +964,14 @@ class Daemon:
                     if time.time() - quiet > PING_SECONDS:
                         write({"id": 0, "event": "ping", "project": project, "data": {}, "at": time.time()})
                         quiet = time.time()
-                if _peer_closed(h.connection):
+                if _peer_closed(h.connection) or (sub.closed and sub.queue.empty()):
                     break
         except OSError:
             pass
         finally:
             self.bus.unsubscribe(sub)
+            if session_id and not self.stopping.is_set():
+                self.session_changed(session_id, False)
         return STREAMED
 
     # ---- lifecycle
@@ -1024,6 +1227,13 @@ def _terminate(home: Path, pid: int, timeout: float = 5.0) -> None:
         pass
 
 
+def spawn_argv() -> list:
+    """The detached daemon's command: the same interpreter with the same isolation flags this process runs under
+    (the app starts `--ensure` as `python3 -E -B`; without them the child writes .pyc into the bundle)."""
+    flags = (["-E"] if sys.flags.ignore_environment else []) + (["-B"] if sys.flags.dont_write_bytecode else [])
+    return [sys.executable, *flags, str(Path(__file__).resolve()), "--foreground"]
+
+
 def _spawn(home: Path) -> subprocess.Popen:
     logfile = home / "daemon.log"
     try:
@@ -1033,7 +1243,7 @@ def _spawn(home: Path) -> subprocess.Popen:
         pass
     fd = os.open(logfile, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
     try:
-        return subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "--foreground"],
+        return subprocess.Popen(spawn_argv(),
                                 stdin=subprocess.DEVNULL, stdout=fd, stderr=fd, close_fds=True,
                                 start_new_session=True, cwd=str(home))
     finally:

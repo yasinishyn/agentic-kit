@@ -107,7 +107,8 @@ class HookTests(unittest.TestCase):
         for event in ("PostToolUse", "Stop"):
             entries = [h for group in spec["hooks"][event] for h in group["hooks"]]
             self.assertEqual([(h["type"], h["command"], h["timeout"]) for h in entries],
-                             [("command", 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/hook.py"', 2)])
+                             [("command", 'sh "${CLAUDE_PLUGIN_ROOT}/scripts/kpython" --quiet-missing '
+                                          '"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py"', 2)])  # v0.3.1 Q12: via kpython
 
     def test_hook_throttle_timeout_fast_exit(self):
         # no daemon.json → exit 0 at once, nothing written into the home

@@ -1,0 +1,85 @@
+#!/bin/sh
+# Kanban plugin launcher (PRD-03, ADR-001, Q12). POSIX sh, no bashisms; always run as `sh kpython …` (plugin caches
+# may drop the exec bit).
+#
+#   sh kpython <script> [args…]                  run <script> on the chosen Python
+#   sh kpython --quiet-missing <script> [args…]  same, but exit 0 silently when no Python is found (hooks)
+#   sh kpython --probe                           print `bundled <path>`, `system <path>` (exit 0) or `missing` (exit 3)
+#
+# Candidates, in order:
+#   1. $HOME/Applications/Kanban.app/Contents/Resources/python/<arch>/bin/python3   (macOS only)
+#   2. /Applications/Kanban.app/…  (same path; KANBAN_APPLICATIONS_DIR replaces /Applications, for tests)
+#   3. the first `python3` on PATH that is >= 3.9 (/usr/bin/python3 only when `xcode-select -p` succeeds: without the
+#      Command Line Tools that stub opens an installer dialog)
+# A bundled candidate is run-checked (`-E -B -c 'import sys'`) and skipped when it fails (reported on stderr by
+# --probe). A bundled interpreter is exec'ed with -E -B (ignores PYTHONHOME/PYTHONPATH; -B replaces
+# PYTHONDONTWRITEBYTECODE, which -E drops); a system one gets PYTHONDONTWRITEBYTECODE=1.
+# The daemon's onboarding hint (daemon.py plugin_python_hint) mirrors this order; keep both in step.
+
+mode=run
+case "$1" in
+    --probe) mode=probe; shift ;;
+    --quiet-missing) mode=quiet; shift ;;
+esac
+
+kind=
+py=
+
+if [ "$(uname -s 2>/dev/null)" = Darwin ]; then
+    arch=$(uname -m 2>/dev/null)
+    [ "$arch" = aarch64 ] && arch=arm64
+    for apps in "$HOME/Applications" "${KANBAN_APPLICATIONS_DIR:-/Applications}"; do
+        candidate="$apps/Kanban.app/Contents/Resources/python/$arch/bin/python3"
+        [ -x "$candidate" ] || continue
+        if "$candidate" -E -B -c 'import sys' >/dev/null 2>&1; then
+            kind=bundled
+            py=$candidate
+            break
+        fi
+        [ "$mode" = probe ] && echo "bundled $candidate failed" >&2
+    done
+fi
+
+if [ -z "$kind" ]; then
+    old_ifs=$IFS
+    set -f
+    IFS=:
+    for dir in $PATH; do
+        IFS=$old_ifs
+        [ -n "$dir" ] || continue
+        candidate="${dir%/}/python3"
+        [ -f "$candidate" ] && [ -x "$candidate" ] || continue
+        if [ "$candidate" = /usr/bin/python3 ]; then
+            xcode-select -p >/dev/null 2>&1 || continue
+        fi
+        if "$candidate" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' >/dev/null 2>&1; then
+            kind=system
+            py=$candidate
+            break
+        fi
+    done
+    IFS=$old_ifs
+    set +f
+fi
+
+if [ "$mode" = probe ]; then
+    if [ -n "$kind" ]; then
+        echo "$kind $py"
+        exit 0
+    fi
+    echo missing
+    exit 3
+fi
+
+if [ -z "$kind" ]; then
+    [ "$mode" = quiet ] && exit 0
+    echo "kanban: no Python found: move Kanban.app to Applications (or ~/Applications), or install python3 (3.9 or newer)" >&2
+    exit 127
+fi
+
+if [ "$kind" = bundled ]; then
+    exec "$py" -E -B "$@"
+fi
+PYTHONDONTWRITEBYTECODE=1
+export PYTHONDONTWRITEBYTECODE
+exec "$py" "$@"

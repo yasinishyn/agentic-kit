@@ -6,8 +6,13 @@
 #
 # Everything after the project path is passed to install.py (--only, --all, --yes, --dry-run, --update, ...).
 # The kit is cached in ~/.agentic-kit (a read-only copy); each run fetches the latest version from the full repo URL.
+# On macOS the Kanban desktop app comes with it: the menu (and --yes) select it whenever `kanban` is selected, --all
+# includes it, --only kanban-app installs just the app;
+# install.py downloads the matching Kanban.app release of this repository (checksum-verified) into ~/Applications
+# (--from-source builds it instead). python3 is still required: the installer itself runs on it.
 # Environment:
-#   AGENTIC_KIT_REPO  repository URL        (default https://github.com/yasinishyn/agentic-kit.git)
+#   AGENTIC_KIT_REPO  repository URL        (default https://github.com/yasinishyn/agentic-kit.git; also the GitHub
+#                                            repository whose releases the app is downloaded from, so forks get theirs)
 #   AGENTIC_KIT_REF   branch or tag to use  (default main; pin a tag for reproducible installs)
 #   AGENTIC_KIT_HOME  cache folder          (default ~/.agentic-kit)
 set -euo pipefail

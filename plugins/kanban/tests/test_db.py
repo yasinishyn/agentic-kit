@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sqlite3
 import stat
 import tempfile
 import threading
@@ -87,6 +88,9 @@ class MigrationTests(DbBase):
         self.assertEqual(settings.get("pickup_seconds", "45"), "45")
         settings.set("pickup_seconds", 30)
         self.assertEqual(settings.get("pickup_seconds"), "30")
+        settings.delete("pickup_seconds")
+        self.assertIsNone(settings.get("pickup_seconds"))
+        settings.delete("pickup_seconds")  # deleting a missing key is a no-op
 
 
 class RunTests(DbBase):
@@ -206,6 +210,122 @@ class SessionTests(DbBase):
         self.assertEqual((got["kind"], got["channel"], got["claude_pid"], got["run_id"]), ("headless", 0, 123, "r-1"))
         with self.assertRaises(ValueError):
             kdb.register_session(self.conn, self.pid, "robot", 1, "")
+
+    def test_session_origin_and_python(self):
+        plain = kdb.register_session(self.conn, self.pid, "interactive", 1, "")
+        self.assertEqual((plain["origin"], plain["python"]), ("unknown", "unknown"))
+        for origin in ("cli", "cli-print", "code-tab", "headless", "unknown"):
+            for python in ("bundled", "system", "unknown"):
+                s = kdb.register_session(self.conn, self.pid, "interactive", 1, "", origin=origin, python=python)
+                self.assertEqual((s["origin"], s["python"]), (origin, python))
+        with self.assertRaises(ValueError):
+            kdb.register_session(self.conn, self.pid, "interactive", 1, "", origin="tab")
+        with self.assertRaises(ValueError):
+            kdb.register_session(self.conn, self.pid, "interactive", 1, "", python="/usr/bin/python3")
+
+    def test_remove_project_deletes_project_and_sessions_only(self):
+        other = kdb.register_project(self.conn, helpers.make_project(self.tmp, "other"))["id"]
+        mine = [kdb.register_session(self.conn, self.pid, "interactive", 1, "")["id"] for _ in range(2)]
+        theirs = kdb.register_session(self.conn, other, "interactive", 1, "")["id"]
+        kdb.create_handoff(self.conn, self.pid, "login", "start", "discovery", "architect", "human (board)")
+        kdb.create_run(self.conn, self.pid, "login", "architect", "interactive", status="running")
+        self.assertEqual(sorted(kdb.remove_project(self.conn, self.pid)), sorted(mine))
+        self.assertIsNone(kdb.get_project(self.conn, self.pid))
+        self.assertEqual([kdb.get_session(self.conn, s) for s in mine], [None, None])
+        self.assertIsNotNone(kdb.get_session(self.conn, theirs))
+        self.assertIsNotNone(kdb.get_project(self.conn, other))
+        # history stays: re-adding the same folder yields the same id and reattaches it
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM handoffs").fetchone()[0], 1)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0], 1)
+        self.assertEqual(kdb.register_project(self.conn, self.root)["id"], self.pid)
+        self.assertEqual(kdb.remove_project(self.conn, "nope"), [])
+
+
+V030_SESSION_INSERT = ("INSERT INTO sessions (id, project_id, kind, channel, claude_pid, claude_start_time, run_id, "
+                       "created_at, last_seen) VALUES (?, ?, 'interactive', 0, 1, '', NULL, 0, 0)")
+
+
+class AdditiveColumnTests(unittest.TestCase):
+    """ADR-004: sessions.origin and sessions.python are added after migrate, outside the user_version ladder."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="kanban-db-cols-"))
+        self.path = self.tmp / "kanban.db"
+        # a v0.3.0 database: migration 1 exactly as that version wrote it, no additive columns
+        raw = sqlite3.connect(str(self.path), isolation_level=None)
+        for statement in kdb.MIGRATIONS[1].split(";\n"):
+            if statement.strip():
+                raw.execute(statement)
+        raw.execute("PRAGMA user_version = 1")
+        raw.close()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def columns(self, conn) -> list:
+        return [r[1] for r in conn.execute("PRAGMA table_info(sessions)")]
+
+    def test_origin_column_additive_idempotent(self):
+        raw = sqlite3.connect(str(self.path))
+        self.assertNotIn("origin", self.columns(raw))
+        raw.close()
+        conn = kdb.connect(self.path)
+        cols = self.columns(conn)
+        self.assertEqual(cols[-2:], ["origin", "python"])
+        self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 1)
+        self.assertEqual(kdb.SCHEMA_VERSION, 1)
+        conn.close()
+        again = kdb.connect(self.path)  # a second open is a no-op
+        self.assertEqual(self.columns(again), cols)
+        self.assertEqual(again.execute("PRAGMA user_version").fetchone()[0], 1)
+        kdb.add_columns(again)  # and so is a repeated call on an open connection
+        self.assertEqual(self.columns(again), cols)
+        again.close()
+
+    def test_concurrent_opens_tolerate_duplicate_column(self):
+        errors, conns = [], []
+        barrier = threading.Barrier(8)
+
+        def open_db():
+            try:
+                barrier.wait()
+                conns.append(kdb.connect(self.path))
+            except Exception as exc:  # noqa: BLE001 - any failure is the finding
+                errors.append(exc)
+        threads = [threading.Thread(target=open_db) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual(errors, [])
+        self.assertEqual(self.columns(conns[0]).count("origin"), 1)
+        for c in conns:
+            c.close()
+        # a connection whose PRAGMA view is stale meets "duplicate column" and tolerates it
+        conn = kdb.connect(self.path)
+
+        class Stale:
+            def execute(self, sql, *args):
+                if sql.startswith("PRAGMA table_info"):
+                    return iter([])
+                return conn.execute(sql, *args)
+        kdb.add_columns(Stale())
+        self.assertEqual(self.columns(conn).count("python"), 1)
+        conn.close()
+
+    def test_v030_insert_still_works(self):
+        conn = kdb.connect(self.path)
+        project = kdb.register_project(conn, helpers.make_project(self.tmp))
+        conn.close()
+        # what a v0.3.0 daemon does with this file: its migrate accepts user_version 1, its INSERT names no origin
+        old = sqlite3.connect(str(self.path), isolation_level=None)
+        old.row_factory = sqlite3.Row
+        version = old.execute("PRAGMA user_version").fetchone()[0]
+        self.assertLessEqual(version, 1)  # v0.3.0 refuses only a user_version above 1
+        old.execute(V030_SESSION_INSERT, ("s-old", project["id"]))
+        row = old.execute("SELECT origin, python FROM sessions WHERE id='s-old'").fetchone()
+        self.assertEqual(tuple(row), ("unknown", "unknown"))
+        old.close()
 
 
 

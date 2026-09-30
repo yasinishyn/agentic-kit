@@ -143,5 +143,5 @@
     }
   });
 
-  K.addDrawerPanel("transcript", "Headless runs", render);
+  K.addDrawerPanel("transcript", "Headless runs", render, {tab: "runs"});
 })();

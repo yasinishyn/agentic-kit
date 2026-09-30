@@ -16,7 +16,10 @@ tools (kanban_approval, kanban_approve → approve-chat; markdown only in local 
 set) go through the daemon with this session's id. With KANBAN_NO_DAEMON=1, or when the daemon cannot be used
 (e.g. an api mismatch it cannot resolve), it falls back to v0.2 local mode with one stderr notice: a board embedded in
 this process at http://127.0.0.1:<port>/ (port per project, written to .kanban/url).
-`server.py --ui` serves only that board. Standard library only.
+`server.py --ui` serves only that board. The registration also sends `origin` (parent argv: code-tab / cli-print /
+cli / unknown) and `python` (bundled / system / unknown). When the board answers 410 (the project was removed from
+it), at start or when the event stream finds the project gone, the tools keep working on the markdown, no embedded
+board starts, and one stderr notice says how to re-add the project. Standard library only.
 """
 from __future__ import annotations
 
@@ -332,6 +335,40 @@ def channel_from_args(args: str) -> bool:
     return False
 
 
+def origin_from_args(args) -> str:
+    """How the parent `claude` is connected (ADR-004, a label only): both `--input-format stream-json` and
+    `--output-format stream-json` → code-tab (the desktop app's Code tab); else -p/--print → cli-print; else cli;
+    an empty or unreadable argv → unknown."""
+    tokens = str(args or "").split()
+    if not tokens:
+        return "unknown"
+    formats = {}
+    for i, token in enumerate(tokens):
+        flag, eq, value = token.partition("=")
+        if flag in ("--input-format", "--output-format"):
+            formats[flag] = value if eq else (tokens[i + 1] if i + 1 < len(tokens) else "")
+    if formats.get("--input-format") == "stream-json" and formats.get("--output-format") == "stream-json":
+        return "code-tab"
+    if any(t in ("-p", "--print") or t.startswith("--print=") for t in tokens):
+        return "cli-print"
+    return "cli"
+
+
+BUNDLED_PYTHON = re.compile(r"/Kanban\.app/Contents/Resources/python/[^/]+/bin/python3[0-9.]*$")
+
+
+def python_kind(executable=None) -> str:
+    """The interpreter this server runs on: bundled (inside a Kanban.app bundle), system, or unknown (unreadable)."""
+    if not executable:
+        return "unknown"
+    paths = {str(executable)}
+    try:
+        paths.add(str(Path(executable).resolve()))
+    except OSError:
+        pass
+    return "bundled" if any(BUNDLED_PYTHON.search(p) for p in paths) else "system"
+
+
 def parent_args(pid: int) -> str:
     try:
         out = subprocess.run(["ps", "-ww", "-o", "args=", "-p", str(int(pid))], capture_output=True, text=True,
@@ -384,6 +421,8 @@ def follow_events() -> None:
                     note = channel_notification(ev) if isinstance(ev, dict) else None
                     if note:
                         write_message(note)
+            elif resp.status == 404 and not reregister():  # the project was removed from the board
+                return
         except (OSError, http.client.HTTPException, ValueError):
             pass
         finally:
@@ -528,6 +567,34 @@ def local_mode_notice(reason: str) -> None:
     print(f"kanban: local mode (board inside this session, v0.2 behaviour): {reason}", file=sys.stderr, flush=True)
 
 
+REMOVED = threading.Event()  # the project was removed from the board (410): local mode without an embedded board
+
+
+def removed_notice() -> None:
+    """The one notice when the board refuses this project (it was removed there)."""
+    if REMOVED.is_set():
+        return
+    REMOVED.set()
+    daemon_py = Path(__file__).resolve().with_name("daemon.py")
+    print(f"kanban: this project was removed from the board; the kanban tools keep working on the markdown "
+          f"(no board in this session). To re-add it: in the Kanban app use Add project, or run: python3 "
+          f"{daemon_py} --open --project \"{ROOT}\"", file=sys.stderr, flush=True)
+
+
+def register_session(kd, port: int, token: str) -> tuple:
+    """POST /api/sessions for this process's parent `claude` (with its origin and this interpreter's kind):
+    (status, body, channel)."""
+    run_id = os.environ.get("KANBAN_RUN_ID") or None
+    args = parent_args(os.getppid())
+    channel = not run_id and channel_from_args(args)  # headless runs never get events
+    status, body = kd.api_request(port, "POST", "/api/sessions", {
+        "project_root": str(ROOT), "claude_pid": os.getppid(),
+        "claude_start_time": kd.process_start_time(os.getppid()),
+        "kind": "headless" if run_id else "interactive", "channel": channel, "run_id": run_id,
+        "origin": origin_from_args(args), "python": python_kind(sys.executable)}, token=token)
+    return status, body, channel
+
+
 def connect_daemon() -> bool:
     """Ensure the per-user daemon and register this session; False (after one stderr notice) → local mode."""
     global DAEMON
@@ -540,12 +607,10 @@ def connect_daemon() -> bool:
         info = kd.ensure(timeout=8)
         home = kdb.prepare_home()
         token = kd.ensure_tokens(home)["client"]
-        run_id = os.environ.get("KANBAN_RUN_ID") or None
-        channel = not run_id and channel_from_args(parent_args(os.getppid()))  # headless runs never get events
-        status, body = kd.api_request(info["port"], "POST", "/api/sessions", {
-            "project_root": str(ROOT), "claude_pid": os.getppid(),
-            "claude_start_time": kd.process_start_time(os.getppid()),
-            "kind": "headless" if run_id else "interactive", "channel": channel, "run_id": run_id}, token=token)
+        status, body, channel = register_session(kd, info["port"], token)
+        if status == 410:
+            removed_notice()
+            return False
         if status != 200 or not isinstance(body, dict) or body.get("api") != kd.API:
             raise RuntimeError(f"session registration answered {status}")
         DAEMON = {"url": info["url"], "port": info["port"], "token": token, "home": str(home),
@@ -556,11 +621,29 @@ def connect_daemon() -> bool:
         return False
 
 
+def reregister() -> bool:
+    """After the event stream answered 404 (project unknown): register again. 410 → local mode with the removal
+    notice (False, DAEMON cleared); 200 → the new session and project ids (True); anything else → retry later."""
+    global DAEMON
+    try:
+        import daemon as kd
+        status, body, channel = register_session(kd, DAEMON["port"], DAEMON["token"])
+    except Exception:
+        return True
+    if status == 410:
+        DAEMON = None
+        removed_notice()
+        return False
+    if status == 200 and isinstance(body, dict) and body.get("session_id"):
+        DAEMON.update(session_id=body["session_id"], project_id=body["project_id"], channel=channel)
+    return True
+
+
 if __name__ == "__main__":
     if "--ui" in sys.argv:
         start_ui(block=True)
     else:
-        if not connect_daemon() and os.environ.get("KANBAN_NO_UI") != "1":
+        if not connect_daemon() and not REMOVED.is_set() and os.environ.get("KANBAN_NO_UI") != "1":
             try:
                 start_ui()
             except Exception as exc:

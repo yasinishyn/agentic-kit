@@ -93,6 +93,8 @@ class McpProcess:
             self.proc.kill()
             self.proc.wait(timeout=5)
         self.proc.stdout.close()
+        if not hasattr(self, "proc_stderr"):
+            self.proc_stderr = self.proc.stderr.read()
         self.proc.stderr.close()
 
 
@@ -224,6 +226,40 @@ class ChannelDetectionTests(Base):
         for args in no:
             self.assertFalse(server.channel_from_args(args), args)
 
+    def test_origin_classification(self):
+        sys.path.insert(0, str(helpers.SCRIPTS))
+        import server
+        cases = {
+            "claude --output-format stream-json --verbose --input-format stream-json --model opus": "code-tab",
+            "/Applications/Claude.app/claude --input-format=stream-json --output-format=stream-json": "code-tab",
+            "claude -p --output-format stream-json --input-format stream-json": "code-tab",
+            "claude -p 'fix it'": "cli-print",
+            "claude --print --output-format stream-json": "cli-print",
+            "claude --input-format stream-json --output-format json -p": "cli-print",
+            "claude": "cli",
+            "node /opt/claude/cli.js --dangerously-load-development-channels server:kanban": "cli",
+            "claude --output-format stream-json": "cli",
+            "claude --input-format stream-json": "cli",
+            "": "unknown",
+            "   ": "unknown",
+            None: "unknown",
+        }
+        for args, origin in cases.items():
+            self.assertEqual(server.origin_from_args(args), origin, args)
+
+    def test_python_classification(self):
+        sys.path.insert(0, str(helpers.SCRIPTS))
+        import server
+        bundled = "/Users/x/Applications/Kanban.app/Contents/Resources/python/arm64/bin/python3"
+        self.assertEqual(server.python_kind(bundled), "bundled")
+        self.assertEqual(server.python_kind("/Applications/Kanban.app/Contents/Resources/python/x86_64/bin/python3.12"),
+                         "bundled")
+        for other in ("/usr/bin/python3", "/Users/x/.pyenv/versions/3.12.1/bin/python3", "/tmp/venv/bin/python",
+                      "/Applications/Kanban.app/Contents/MacOS/python3"):
+            self.assertEqual(server.python_kind(other), "system", other)
+        for unreadable in ("", None):
+            self.assertEqual(server.python_kind(unreadable), "unknown")
+
 
 class DaemonModeTests(Base):
     def test_channel_flag_registered_from_parent_argv(self):
@@ -269,6 +305,61 @@ class DaemonModeTests(Base):
         text, err = p.call("kanban_move", ticket="login", stage="architect")
         self.assertFalse(err, text)
         self.assertEqual(p.notes, [])
+
+    def test_origin_and_python_registered(self):
+        tab = self.start(parent_args=["--output-format", "stream-json", "--input-format", "stream-json"])
+        self.init(tab)
+        printed = self.start(parent_args=["-p", "hello"])
+        self.init(printed)
+        cli = self.start(parent_args=["--model", "opus"])
+        self.init(cli)
+        by_parent = {r["claude_pid"]: (r["origin"], r["python"]) for r in self.sessions()}
+        self.assertEqual(by_parent, {tab.proc.pid: ("code-tab", "system"), printed.proc.pid: ("cli-print", "system"),
+                                     cli.proc.pid: ("cli", "system")})
+
+    def remove_project(self):
+        status, body = self.d.call("DELETE", f"/api/projects/{self.project_id()}", token="ui")
+        self.assertEqual(status, 200, body)
+
+    def notices(self, p: McpProcess) -> list:
+        p.close()
+        return [line for line in p.proc_stderr.splitlines() if "removed from the board" in line]
+
+    def test_removed_project_local_mode_no_ui(self):
+        self.remove_project()
+        p = self.start()
+        self.init(p)
+        text, err = p.call("kanban_board")
+        self.assertFalse(err, text)
+        self.assertIn("web board not running", text)  # local mode, and no embedded board
+        text, err = p.call("kanban_move", ticket="login", stage="architect")  # tools keep working on the markdown
+        self.assertFalse(err, text)
+        self.assertIn("status: architect", (self.root / ".SDD/specs/login/README.md").read_text())
+        self.assertEqual(self.sessions(), [])
+        self.assertFalse((self.root / ".kanban").exists(), "no embedded UI may start")
+        notices = self.notices(p)
+        self.assertEqual(len(notices), 1, p.proc_stderr)
+        self.assertIn("Add project", notices[0])
+        self.assertIn("daemon.py --open --project", notices[0])
+        self.assertNotIn("local mode (board inside this session", p.proc_stderr)
+
+    def test_live_session_removed_goes_local(self):
+        p = self.start()
+        self.init(p)
+        self.wait_live()
+        self.remove_project()
+        end = time.time() + 20
+        text = ""
+        while time.time() < end:
+            text, err = p.call("kanban_board")
+            if "web board not running" in text:
+                break
+            time.sleep(0.2)
+        self.assertIn("web board not running", text)  # re-registration answered 410: local mode
+        text, err = p.call("kanban_start", ticket="login")
+        self.assertEqual((err, text), (False, "ok (local mode: runs are not tracked)"))
+        self.assertFalse((self.root / ".kanban").exists())
+        self.assertEqual(len(self.notices(p)), 1, p.proc_stderr)
 
     def test_tool_move_no_handoff(self):
         p = self.start()

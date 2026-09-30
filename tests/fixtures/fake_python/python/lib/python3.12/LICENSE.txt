@@ -1,0 +1,1 @@
+Fake PSF licence text for tests only.

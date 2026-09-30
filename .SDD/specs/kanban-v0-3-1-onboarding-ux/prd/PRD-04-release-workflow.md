@@ -1,6 +1,6 @@
 ---
 title: PRD-04 - GitHub Actions release workflow, packaging and nested signing
-status: todo
+status: done
 updated: 2026-09-29
 ---
 
@@ -13,6 +13,8 @@ updated: 2026-09-29
 | Wave · Requires | 2 · PRD-01 (`fetch-python.sh`, `python.lock`, `tauri.release.conf.json`) |
 | Parallelisable | Yes — wave 2 (with PRD-05) |
 
+> **Developer note (2026-09-29):** PRD-01's extended trim removes the unused `libpython3.12.dylib`, so the signature check targets the Mach-O files that remain (`bin/python3`, `lib-dynload/*.so`, other `lib/*.dylib`) — verified ad-hoc with `codesign -dv`.
+
 ## Goal
 A tag pushed by the developer tests, builds and drafts a GitHub Release with the universal app whose nested code is
 signed (real identity when Apple secrets exist, ad-hoc otherwise); a manual dispatch is a build-only dry run.
@@ -24,7 +26,7 @@ signed (real identity when Apple secrets exist, ad-hoc otherwise); a manual disp
 3. Release config: add `bundle.macOS.entitlements` → `entitlements.plist` (sequenced after PRD-01 created the file) —
    `plugins/kanban/app/src-tauri/tauri.release.conf.json` (modify)
 4. Packaging script `package-release.sh [--host-only]`: requires `resources/python/<arch>` (else exit 1 naming
-   `fetch-python.sh`); signs every Mach-O under `src-tauri/resources/python/**` (`bin/python3*`, `libpython3.12.dylib`,
+   `fetch-python.sh`); signs every Mach-O under `src-tauri/resources/python/**` (`bin/python3*`, the remaining `lib/*.dylib`,
    `lib-dynload/*.so`) — with `--options runtime --entitlements entitlements.plist --timestamp -s "$APPLE_SIGNING_IDENTITY"`
    when `SIGNING=1`, else `-s -` (ad-hoc); runs `cargo tauri build --target universal-apple-darwin --bundles app,dmg
    --config src-tauri/tauri.release.conf.json` (host target with `--host-only`); ad-hoc signs the outer bundle when
@@ -65,17 +67,17 @@ signed (real identity when Apple secrets exist, ad-hoc otherwise); a manual disp
 | Draft release | developer publishes, then pins sums in `releases.lock` (PRD-07 docs) | a release with the tag already exists → `gh` fails; the developer deletes the draft and re-runs |
 
 ## Acceptance criteria
-- [ ] Triggers are exactly tag push + dispatch; no PR triggers (step 5)
-- [ ] `build` has `contents: read` and `persist-credentials: false`; `release` has `contents: write`, no checkout step, runs only on tag pushes (step 5)
-- [ ] Secrets are referenced only in the `build` job and never in an `if:` expression; `SIGNING` comes from a step (step 5)
-- [ ] Dispatch runs never sign and never reach `release` (step 5)
-- [ ] Tag/version check step has `if: github.event_name == 'push'` and compares all five fields (step 5)
-- [ ] Tests (incl. `test_app_python_lock.py`, `test_release_workflow.py`, `cargo test --locked`) run before `fetch-python.sh`, which runs before `package-release.sh` (step 5)
-- [ ] Every `uses:` has a 40-hex SHA; `tauri-cli` installed `--locked` with a pinned version; a concurrency group is set (step 5)
-- [ ] `package-release.sh --host-only` on the developer's Mac produces `dist/Kanban.app.zip` + `SHA256SUMS`, and `codesign --verify --deep --strict` passes on the ad-hoc signed app; `codesign -dv` on `Resources/python/arm64/lib/libpython3.12.dylib` shows a signature (step 4)
-- [ ] After signing, the bundled interpreter of each executable arch passes `-E -c 'import ssl, sqlite3, ctypes, json'`; a failure fails the build (step 4, re-review N5)
-- [ ] The release step sets `GH_TOKEN: ${{ github.token }}` and passes `--repo "$GITHUB_REPOSITORY"` (step 5, re-review N4)
-- [ ] Release job creates a **draft** named after the tag with exactly `Kanban.dmg`, `Kanban.app.zip`, `SHA256SUMS` (step 5)
+- [x] Triggers are exactly tag push + dispatch; no PR triggers (step 5)
+- [x] `build` has `contents: read` and `persist-credentials: false`; `release` has `contents: write`, no checkout step, runs only on tag pushes (step 5)
+- [x] Secrets are referenced only in the `build` job and never in an `if:` expression; `SIGNING` comes from a step (step 5)
+- [x] Dispatch runs never sign and never reach `release` (step 5)
+- [x] Tag/version check step has `if: github.event_name == 'push'` and compares all five fields (step 5)
+- [x] Tests (incl. `test_app_python_lock.py`, `test_release_workflow.py`, `cargo test --locked`) run before `fetch-python.sh`, which runs before `package-release.sh` (step 5)
+- [x] Every `uses:` has a 40-hex SHA; `tauri-cli` installed `--locked` with a pinned version; a concurrency group is set (step 5)
+- [x] `package-release.sh --host-only` on the developer's Mac produces `dist/Kanban.app.zip` + `SHA256SUMS`, and `codesign --verify --deep --strict` passes on the ad-hoc signed app; `codesign -dv` on `Resources/python/arm64/lib/lib-dynload/*.so` shows a signature (step 4)
+- [x] After signing, the bundled interpreter of each executable arch passes `-E -c 'import ssl, sqlite3, ctypes, json'`; a failure fails the build (step 4, re-review N5)
+- [x] The release step sets `GH_TOKEN: ${{ github.token }}` and passes `--repo "$GITHUB_REPOSITORY"` (step 5, re-review N4)
+- [x] Release job creates a **draft** named after the tag with exactly `Kanban.dmg`, `Kanban.app.zip`, `SHA256SUMS` (step 5)
 
 ## Edge cases
 | Case | Handling | Priority |

@@ -3,3 +3,6 @@ __pycache__/
 .DS_Store
 .claude/settings.local.json
 .claude/worktrees/
+
+# release build output (plugins/kanban/app/scripts/package-release.sh)
+/dist/

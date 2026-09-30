@@ -1,0 +1,13 @@
+#!/bin/sh
+# Fake python-build-standalone interpreter for tests/test_app_python_lock.py (never a real runtime).
+# Answers --version like CPython 3.12 and hands `-m compileall …` to the host interpreter named by
+# FAKE_PYTHON_HOST (the test sets it to sys.executable); anything else fails.
+for a in "$@"; do
+  case "$a" in
+    --version|-V) echo "Python 3.12.14"; exit 0 ;;
+    compileall) [ -n "${FAKE_PYTHON_FAIL_COMPILE:-}" ] && { echo "fake compileall failure" >&2; exit 1; }
+                exec "${FAKE_PYTHON_HOST:-python3}" "$@" ;;
+  esac
+done
+echo "fake python3: unsupported arguments: $*" >&2
+exit 1

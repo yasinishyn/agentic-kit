@@ -30,8 +30,9 @@ curl -fsSL https://raw.githubusercontent.com/yasinishyn/agentic-kit/main/get.sh 
 
 What it does:
 1. **Downloads the kit** from `https://github.com/yasinishyn/agentic-kit.git` into `~/.agentic-kit`, a read-only cache. On later runs it fetches the latest version from that full URL.
-2. **Asks which components you want** (`sdd`, `skills`, `agents`, `guard`, `instructions`, `kanban`) and adds them to your project.
-3. **Never overwrites anything** of yours.
+2. **Asks which components you want** (`sdd`, `skills`, `agents`, `guard`, `instructions`, `kanban`, `kanban-app`) and adds them to your project.
+3. **On macOS, installs the Kanban desktop app** when you pick `kanban` (pre-selected then; `--all` includes it): it downloads the matching release from GitHub, checks its SHA-256 and puts `Kanban.app` in `~/Applications`, with no Gatekeeper prompt.
+4. **Never overwrites anything** of yours.
 
 Pass installer options after the project path:
 
@@ -44,7 +45,7 @@ That previews the changes and writes nothing. Other options:
 | Option | Effect |
 |---|---|
 | `--only sdd,skills,agents --yes` | Pick components without questions |
-| `--all --yes` | Everything, no questions |
+| `--all --yes` | Everything, no questions (on macOS including the Kanban app) |
 | `--update` | Refresh kit files you haven't edited |
 
 **Prefer to read the script before running it?**
@@ -101,9 +102,9 @@ claude plugin install kanban@agentic-kit
 | `guard` | A PreToolUse hook that blocks git commit/push by default (opt-in for commits as the developer), deploy scripts, the AWS CLI, non-local database clients and credential reads; deny rules added to your settings | `.claude/hooks/`, `.claude/settings.json` |
 | `instructions` | A `CLAUDE.md` template (hard rules, how we work) and a long-term memory index | `CLAUDE.md`, `.claude/memory/` |
 | `kanban` | A Claude Code plugin: one board over `.SDD/specs` for all your projects (tickets = spec folders, columns = stages), hand-off of board moves to Claude, live activity, MCP tools, the `kanban:sdd` skill; two permission rules added to your settings | installed with `claude plugin …` (see below), `.claude/settings.json` |
-| `kanban-app` | The Kanban desktop app (macOS), built locally with `cargo tauri`. Only with `--only kanban-app`: never by default, `--all` or `--update`; the installer checks `cargo`, the Tauri CLI and the Xcode tools and prints the install commands for anything missing | `~/Applications/Kanban.app` |
+| `kanban-app` | The Kanban desktop app (macOS, universal, with its own Python): the checksum-verified release download. Pre-selected with `kanban` in the menu, included by `--all`, refreshed by `--update` when a newer release exists; `--from-source` builds it with `cargo tauri` instead. Or download the `.dmg` from [Releases](https://github.com/yasinishyn/agentic-kit/releases) | `~/Applications/Kanban.app` |
 
-All of them except `kanban` and `kanban-app` are selected by default.
+All of them except `kanban` and `kanban-app` are selected by default. The app is skipped with a note outside macOS.
 
 ### Git policy
 
@@ -129,7 +130,8 @@ All of them except `kanban` and `kanban-app` are selected by default.
 ./install.sh <project> --update                 # after `git pull`: refresh kit files you haven't edited
 ./install.sh --list                             # list the components
 ./install.sh <project> --only kanban --kanban-scope project   # enable the plugin for everyone in that repo
-./install.sh --only kanban-app --dry-run         # the Kanban desktop app (macOS): show the build + copy commands
+./install.sh --only kanban-app --dry-run         # the Kanban desktop app (macOS): show the download plan
+./install.sh --only kanban-app --from-source     # build the app locally instead (cargo, Tauri CLI, Xcode tools)
 ```
 
 ### What "never overwrites" means exactly
@@ -168,8 +170,8 @@ claude plugin marketplace update agentic-kit
 claude plugin update kanban@agentic-kit
 ```
 
-Then restart Claude Code. **The Kanban desktop app** is not touched by `--update`: rebuild it from the updated kit
-with `python3 install.py --only kanban-app` (it replaces the copy in `~/Applications`).
+Then restart Claude Code. **The Kanban desktop app:** if the kit installed it, `--update` replaces it when a newer
+release exists (not while it is running); `python3 install.py --only kanban-app` installs the current one at any time.
 
 
 ## The kanban plugin
@@ -204,7 +206,9 @@ or `./install.sh <project> --only kanban`, which runs the same two commands.
 }
 ```
 
-Details: [plugins/kanban/README.md](plugins/kanban/README.md).
+Details: [plugins/kanban/README.md](plugins/kanban/README.md): [quick start](plugins/kanban/README.md#quick-start)
+(one-liner, `.dmg` or source), [first run](plugins/kanban/README.md#first-run) and
+[troubleshooting](plugins/kanban/README.md#troubleshooting).
 
 ## Using it day to day
 
@@ -227,12 +231,14 @@ The repository is `https://github.com/yasinishyn/agentic-kit`; `main` is what th
 git tag -a v0.2.0 -m "agentic-kit 0.2.0" && git push origin main v0.2.0
 ```
 
-**Plugin changes:** bump `version` in `plugins/kanban/.claude-plugin/plugin.json`. Users run `claude plugin update`.
+**Plugin changes:** bump the kanban version in all five places (plugin.json, marketplace.json, `daemon.py`, the app's
+`tauri.conf.json` and `Cargo.toml`). Users run `claude plugin update`. **Kanban app releases** (tag `kanban-v<version>`,
+draft release, pinning `SHA256SUMS`): [plugins/kanban/README.md](plugins/kanban/README.md#releasing-maintainers).
 
 **Tests:**
 
 ```bash
-python3 tests/test_install.py
+python3 -m unittest discover -s tests -p 'test_*.py'
 python3 -m unittest discover -s plugins/kanban/tests -p 'test_*.py'
 claude plugin validate plugins/kanban && claude plugin validate .
 bash .claude/hooks/test_guard_bash.sh
@@ -247,8 +253,9 @@ agentic-kit/
 ├── .claude/                     skills, agents, hooks, settings, memory (the installable parts)
 ├── .SDD/                        process README + spec templates
 ├── .claude-plugin/marketplace.json
-├── plugins/kanban/              the kanban plugin (hooks, MCP server, web board, skill, tests)
-├── tests/                       installer tests
+├── plugins/kanban/              the kanban plugin (hooks, MCP server, web board, desktop app, skill, tests)
+├── .github/workflows/           the Kanban app release workflow
+├── tests/                       installer, release and docs tests
 └── LICENSES/                    upstream licences
 ```
 
@@ -256,5 +263,6 @@ agentic-kit/
 
 Parts of the skills and agents are adapted from MIT-licensed projects:
 [obra/superpowers](https://github.com/obra/superpowers) by Jesse Vincent and
-[msitarzewski/agency-agents](https://github.com/msitarzewski/agency-agents). See [LICENSES/NOTICE.md](LICENSES/NOTICE.md).
+[msitarzewski/agency-agents](https://github.com/msitarzewski/agency-agents). Release builds of the Kanban app bundle
+CPython (PSF License) from python-build-standalone. See [LICENSES/NOTICE.md](LICENSES/NOTICE.md).
 The kit's own licence is still to be chosen: add a `LICENSE` file before publishing publicly.

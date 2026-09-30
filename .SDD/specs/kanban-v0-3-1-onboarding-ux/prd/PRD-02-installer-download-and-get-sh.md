@@ -1,6 +1,6 @@
 ---
 title: PRD-02 - Installer download mode, get.sh menu and pinned sums
-status: todo
+status: done
 updated: 2026-09-29
 ---
 
@@ -73,18 +73,18 @@ from source stays available.
 | `--dry-run` | prints repository, tag, URLs, sums source and steps | no network, nothing written |
 
 ## Acceptance criteria
-- [ ] macOS menu: with `kanban` selected the app is pre-selected; `--yes` and `--all` include it; non-macOS prints a skip note (step 4, Q10, Q15)
-- [ ] A fork's `AGENTIC_KIT_REPO=https://github.com/alice/agentic-kit.git` downloads from `github.com/alice/agentic-kit/releases` (step 5)
-- [ ] Redirect to a foreign host, an `http` hop, or a 6th hop → refused, nothing written (step 6)
-- [ ] `AGENTIC_KIT_RELEASES_URL=https://evil.example/` is ignored; `http://127.0.0.1:<port>/` is used (step 5)
-- [ ] Missing tag → newest published, non-prerelease `kanban-v*` with a note; no published release → skip note suggesting `--from-source` (step 7)
-- [ ] Pinned entry present → pinned sums used; release `SHA256SUMS` disagreeing with it → refused; no entry → release sums used and the note printed (step 8, Q14)
-- [ ] Wrong top level or bundle id → refused; the existing `~/Applications/Kanban.app` is byte-identical afterwards (step 9)
-- [ ] Running app/daemon under the bundle: with `--yes` the update is deferred with a note and nothing is replaced (step 9)
-- [ ] `--update` with the same version → "up to date", no asset request made (fake server request log) (step 10)
-- [ ] `--from-source` prints the cargo build plan and says the build uses the system Python (step 11)
-- [ ] No file from the bundled runtime's licences appears under the project's `.claude/agentic-kit/LICENSES/` (step 12)
-- [ ] `--dry-run` makes no network request (step 4–11)
+- [x] macOS menu: with `kanban` selected the app is pre-selected; `--yes` and `--all` include it; non-macOS prints a skip note (step 4, Q10, Q15)
+- [x] A fork's `AGENTIC_KIT_REPO=https://github.com/alice/agentic-kit.git` downloads from `github.com/alice/agentic-kit/releases` (step 5)
+- [x] Redirect to a foreign host, an `http` hop, or a 6th hop → refused, nothing written (step 6)
+- [x] `AGENTIC_KIT_RELEASES_URL=https://evil.example/` is ignored; `http://127.0.0.1:<port>/` is used (step 5)
+- [x] Missing tag → newest published, non-prerelease `kanban-v*` with a note; no published release → skip note suggesting `--from-source` (step 7)
+- [x] Pinned entry present → pinned sums used; release `SHA256SUMS` disagreeing with it → refused; no entry → release sums used and the note printed (step 8, Q14)
+- [x] Wrong top level or bundle id → refused; the existing `~/Applications/Kanban.app` is byte-identical afterwards (step 9)
+- [x] Running app/daemon under the bundle: with `--yes` the update is deferred with a note and nothing is replaced (step 9)
+- [x] `--update` with the same version → "up to date", no asset request made (fake server request log) (step 10)
+- [x] `--from-source` prints the cargo build plan and says the build uses the system Python (step 11)
+- [x] No file from the bundled runtime's licences appears under the project's `.claude/agentic-kit/LICENSES/` (step 12)
+- [x] `--dry-run` makes no network request (step 4–11)
 
 ## Edge cases
 | Case | Handling | Priority |

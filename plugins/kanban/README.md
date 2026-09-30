@@ -34,7 +34,134 @@ updated: 2026-09-27
 
 Folders whose names start with `_` or `.` aren't tickets. A README without `status:` shows in Discovery with a warning.
 
-## Install
+![The board of the demo project in the Kanban app: Discovery to Demo columns, E2E and Done collapsed](docs/img/first-move.png)
+
+## Quick start
+
+Three ways to get the board. The plugin (Claude's side) and the app (your side) work together; the app alone already
+shows the board.
+
+| Route | Gets you | First launch |
+|---|---|---|
+| 1. The `get.sh` one-liner | the kit, the plugin and, on macOS, the app | no Gatekeeper prompt |
+| 2. The `.dmg` from GitHub Releases | the app only; add the plugin yourself | unsigned: "Open Anyway" once |
+| 3. Build from source | the app, built on your Mac | no Gatekeeper prompt |
+
+### 1. One command (recommended)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yasinishyn/agentic-kit/main/get.sh | bash -s -- /path/to/project
+```
+
+- Pick `kanban` in the menu; on macOS `kanban-app` is then pre-selected. `--all` includes the app on macOS;
+  `--only kanban-app` installs just the app; `--yes` alone takes the defaults, which don't include `kanban`.
+- The installer downloads `Kanban.app.zip` of the release `kanban-v<plugin version>` (else the newest published
+  `kanban-v*` release) from the kit's GitHub repository, or a fork's own with `AGENTIC_KIT_REPO`.
+- It checks the SHA-256 against the sums pinned in [`app/releases.lock`](app/releases.lock) when the kit has an entry
+  for that tag, else against the release's `SHA256SUMS` (it then says "integrity only"). A mismatch stops the install.
+- It installs to `~/Applications/Kanban.app` and replaces an older copy (not while Kanban is running).
+  `--update` replaces it only when the release is newer.
+- The installer, not a browser, downloads the app, so it carries no quarantine flag and opens without a Gatekeeper
+  prompt. `python3` (3.9+) is still needed: the installer runs on it.
+
+### 2. Download the app
+
+1. Open the kit's [GitHub Releases](https://github.com/yasinishyn/agentic-kit/releases) and pick the newest
+   `kanban-v…` release. Download `Kanban.dmg` (or `Kanban.app.zip`) and `SHA256SUMS`.
+2. Verify the download:
+   ```bash
+   cd ~/Downloads && shasum -a 256 -c SHA256SUMS --ignore-missing   # expect: Kanban.dmg: OK
+   ```
+   The same sums are in the release notes and, once pinned, in [`app/releases.lock`](app/releases.lock).
+3. Open the `.dmg`, drag **Kanban** to **Applications**, then open it once as described in
+   [First launch of an unsigned app](#first-launch-of-an-unsigned-app).
+4. Install the plugin: see [Install the plugin](#install-the-plugin).
+
+The app is universal (Apple Silicon and Intel, macOS 11 or newer) and brings its own Python 3.12, so the board needs no
+Python on your Mac. The plugin's MCP server and hooks use that same Python while Kanban.app is in `~/Applications` or
+`/Applications`.
+
+### 3. Build from source
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh     # Rust (cargo); then: source ~/.cargo/env
+cargo install tauri-cli --version '^2' --locked                     # the Tauri CLI
+xcode-select --install                                              # Xcode command line tools
+python3 install.py --only kanban-app --from-source --dry-run        # show the commands
+python3 install.py --only kanban-app --from-source                  # build, then copy to ~/Applications
+```
+
+The installer checks `cargo`, the Tauri CLI and the Xcode tools and prints the install command for anything missing;
+it never runs remote scripts itself. A source build bundles **no** Python: the app then uses `python3` from your system
+(3.9+). For the bundled runtime, fetch it and build with the release config yourself:
+
+```bash
+bash plugins/kanban/app/scripts/fetch-python.sh --arch both   # pinned python-build-standalone, sha256-checked
+cd plugins/kanban/app && cargo tauri build --bundles app --config src-tauri/tauri.release.conf.json
+```
+
+Then copy `src-tauri/target/release/bundle/macos/Kanban.app` to `~/Applications`.
+`app/scripts/package-release.sh --host-only` does the full release build (nested signing, checks) for your Mac only.
+
+**No app?** `python3 <plugin>/scripts/daemon.py --open` opens the same board in your browser.
+
+## First launch of an unsigned app
+
+Release builds are unsigned until the maintainers add an Apple Developer ID, so macOS blocks the **first** open of a
+browser-downloaded copy. Routes 1 and 3 need none of this.
+
+| macOS | What to do |
+|---|---|
+| 15 (Sequoia) or newer | Open Kanban once and dismiss the warning. Then **System Settings → Privacy & Security**, scroll to Security, click **Open Anyway** next to "Kanban was blocked", and confirm with your password. |
+| 14 or earlier | In Finder, right-click (or Control-click) Kanban → **Open** → **Open**. |
+| Any version | Remove the quarantine flag in a terminal: `xattr -dr com.apple.quarantine /Applications/Kanban.app` |
+
+Do this only for a copy whose `SHA256SUMS` you checked. macOS remembers the choice; later opens are normal.
+
+## First run
+
+The board walks you through three steps; **Help → Show welcome** brings them back after you dismiss them.
+
+1. **Add a project.** Click **Add project**, choose the folder (the app opens a folder picker; a browser asks for the
+   path) and check the preview: the resolved folder, what was found (`.git`, `.claude`, `.SDD`), a warning for your
+   home folder, and an offer to create `.SDD/specs` when it is missing. **Add project** confirms.
+
+   ![Welcome: step 1, Add a project](docs/img/welcome.png)
+
+   ![Add project dialog with the dry-run preview (browser mode: a typed path)](docs/img/add-project.png)
+
+2. **Connect Claude.** In the app, **Connect Claude** starts Claude Code with channels in the project's terminal (or
+   shows it if it is already running). In a browser, copy the command and run it in a terminal in the project. The
+   step turns green when a session with channels is connected.
+
+   ![Welcome: step 2, Connect Claude, above the board (browser mode shows the command with Copy)](docs/img/board-welcome.png)
+
+3. **Move your first card.** Drag a card to the next column, or use its **⋯** menu. The card shows "queued" until a
+   session picks the hand-off up (see [Hand-off](#hand-off-moving-a-card-starts-the-work)).
+
+   ![A moved card, queued for Claude; welcome step 3 done](docs/img/first-move.png)
+
+The connection chip in the header (**n sessions · channels on/off**) opens the project panel: the live Claude sessions
+of this project (CLI + channels, CLI, CLI print, Code tab, headless), when each was last seen, and Connect Claude. In
+the app the panel also holds the project's terminal.
+
+![Project panel: connection state and the channels command (browser mode; the app shows a Connect Claude button)](docs/img/connection-panel.png)
+
+Click a card to open its panel: **Overview** (stage, sub-tasks, files), **Spec** (viewer and editor, approval),
+**Runs** (transcript, Stop), **Git**, and in the app **Terminal**.
+
+![Ticket panel with its tabs (browser mode: no Terminal tab)](docs/img/ticket-panel.png)
+
+<details>
+<summary>Dark mode</summary>
+
+The board follows the system appearance.
+
+![The board in dark mode](docs/img/board-dark.png)
+
+</details>
+
+## Install the plugin
 
 ```bash
 claude plugin marketplace add yasinishyn/agentic-kit      # or a local path to the kit
@@ -43,29 +170,35 @@ claude plugin install kanban@agentic-kit
 
 Restart Claude Code, or run `/reload-plugins`. `/mcp` then lists `plugin:kanban:kanban`. Ask Claude "where is the board?" for the URL.
 
-The kit installer (`--only kanban`) runs the same two commands and adds two rules to the project's
+**Update** an older plugin (before v0.3.1 its sessions show as "unknown" in the connection panel and it doesn't know the bundled Python):
+
+```bash
+claude plugin marketplace update agentic-kit
+claude plugin update kanban@agentic-kit
+```
+
+The kit installer (`--only kanban`) runs the same install commands and adds two rules to the project's
 `.claude/settings.json`: `mcp__plugin_kanban_kanban__kanban_approve` under `permissions.ask`, and
 `Read(~/Library/Application Support/Kanban/ui.token)` under `permissions.deny` (the `guard` component adds them too).
+
+### Connecting Claude
+
+| Session | How board moves reach it |
+|---|---|
+| Claude Code CLI with channels | `claude --dangerously-load-development-channels plugin:kanban@agentic-kit` in the project, or **Connect Claude** in the app. Hand-offs arrive as channel events. |
+| Claude Code CLI without channels | Not pushed. The card offers **Copy prompt** (paste it into the session) and **Run headless**. |
+| Claude desktop app, Code tab | No channel events. Use **Copy prompt** or **Run headless** on the card. |
+| No session open | The daemon starts a headless run by itself after 45 s. |
 
 ## The desktop app (macOS)
 
 A small Tauri app that shows the board of every project in one window, with, per ticket, the run transcript, the
-approval dialog, the spec editor, a git panel and a terminal in the project folder. It starts the daemon if needed and
-holds the UI token in memory.
+approval dialog, the spec editor, a git panel and a terminal in the project folder. It starts the daemon on its bundled
+Python if needed, holds the UI token in memory, and adds projects through a native folder picker.
 
-It is built locally from source (no signed download):
-
-```bash
-python3 install.py --only kanban-app --dry-run   # show the commands
-python3 install.py --only kanban-app             # build, then copy Kanban.app to ~/Applications (replaces an old copy)
-```
-
-It needs `cargo`, the Tauri CLI and the Xcode command line tools; the installer checks them and, when one is missing,
-prints the command to install it and stops. It never downloads or runs anything itself. By hand:
-`cd plugins/kanban/app && cargo tauri build --bundles app`, then copy
-`src-tauri/target/release/bundle/macos/Kanban.app` to `~/Applications`. `--all` and `--update` never build the app.
-
-**No app?** `python3 <plugin>/scripts/daemon.py --open` opens the same board in your browser.
+Install it with one of the [Quick start](#quick-start) routes. The installer puts it in `~/Applications`; a `.dmg`
+copy usually goes to `/Applications`. The plugin's launcher `scripts/kpython` looks in `~/Applications` first, then
+`/Applications`, then uses `python3` from `PATH`.
 
 ## The board daemon
 
@@ -201,10 +334,66 @@ Set by the daemon for headless runs: `KANBAN_RUN_ID`, `KANBAN_HANDOFF_ID`. For t
   prompt (ticket slug and stage only), one run per ticket.
 - **Local only:** nothing leaves your machine. Transcripts are kept 30 days in `kanban.db`.
 
+## Troubleshooting
+
+| Symptom | Cause and fix |
+|---|---|
+| Board tools missing in Claude, or "kanban: no Python found" | The plugin found no Python. Move Kanban.app to `~/Applications` or `/Applications` (it brings Python 3.12), or install `python3` 3.9+. Check what the plugin would use: `sh <plugin>/scripts/kpython --probe` prints `bundled <path>`, `system <path>` or `missing` (a broken bundled copy is reported as `bundled <path> failed`). The welcome's Connect Claude step shows the same fix. |
+| "Claude was not found on the login shell PATH" (app terminal, Connect Claude) | The app starts `claude` through your login shell (`zsh -l -i -c`). Put the directory of `claude` on `PATH` in `~/.zprofile` or `~/.zshrc`, open a new terminal to check `command -v claude`, then click Connect Claude again. |
+| Port 47821 is taken | The daemon picks a free port instead (see `daemon.json` in `KANBAN_HOME`); nothing to do. With `KANBAN_DAEMON_PORT` set it uses only that port and fails when it is taken: unset it or pick another. |
+| No channel events: moves stay "queued" | Only a CLI session started with `claude --dangerously-load-development-channels plugin:kanban@agentic-kit` (or the app's Connect Claude) gets them. The connection panel lists each session and whether channels are on. Update an old plugin (`claude plugin marketplace update agentic-kit`, `claude plugin update kanban@agentic-kit`) and restart the session. |
+| Code tab sessions never pick up a move | By design: the Claude desktop app's Code tab has no channels. Use **Copy prompt** or **Run headless** on the card. |
+| Gatekeeper: "Kanban can't be opened" / "Apple could not verify" | An unsigned, browser-downloaded copy: see [First launch of an unsigned app](#first-launch-of-an-unsigned-app) (Open Anyway, right-click → Open, or `xattr`). |
+| Badge "approved before v0.3" | The ticket reached execution before board approvals existed. It keeps working and needs no action; its next entry into execution from an earlier column records a board approval. |
+| "database is locked" when several sessions start at once | Fixed in v0.3.1 (the first open of `kanban.db` is serialised). Update the plugin and the app. |
+| Older app after a newer one ran | v0.3.1 adds the `sessions.origin` and `sessions.python` columns without changing the schema version; a v0.3.0 app or plugin ignores them. No action needed. |
+| "kanban.db has schema N; this version understands up to M" | An older plugin or app met a database from a newer one. Update both (plugin commands above; the app with the installer or a new download). |
+| Project removed from the board, but a session is still open | The board answers 410 to that session; its tools keep working on the markdown (local mode, one notice on stderr). Add the project again with **Add project**, or `python3 <plugin>/scripts/daemon.py --open --project <folder>`, then restart the session. |
+| Anything else | `daemon.log` in `KANBAN_HOME` (`~/Library/Application Support/Kanban`); `daemon.py --stop` and reopen the app restarts the daemon. |
+
+## Releasing (maintainers)
+
+The developer tags, pushes and publishes; agents never push, tag or publish. The workflow
+`.github/workflows/kanban-app-release.yml` tests, fetches the pinned Python for both arches, signs the nested code
+(Developer ID with the Apple secrets, ad-hoc without), builds the universal app and drafts a release with
+`Kanban.dmg`, `Kanban.app.zip` and `SHA256SUMS`.
+
+1. **Bump the five versions** to the new `<version>` (the workflow's tag check compares them):
+   `plugins/kanban/.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` (the `kanban` entry),
+   `plugins/kanban/scripts/daemon.py` (`VERSION`), `plugins/kanban/app/src-tauri/tauri.conf.json` and
+   `plugins/kanban/app/src-tauri/Cargo.toml`; then `cargo check` in `src-tauri` to update the root package in
+   `Cargo.lock`. `python3 -m unittest tests/test_versions_and_docs.py` checks all of them.
+2. **Dry run first (optional):** GitHub → Actions → kanban-app-release → **Run workflow** (`workflow_dispatch`). It
+   tests and builds, uploads `dist/` as an artefact, never signs and never creates a release.
+3. **Tag and push:**
+   ```bash
+   git tag -a kanban-v<version> -m "Kanban <version>" && git push origin kanban-v<version>
+   ```
+4. **Check the draft release** the workflow created: download `Kanban.dmg`, verify it against `SHA256SUMS`, open it on
+   a clean Mac (or account), and read the notes. Then **Publish** it.
+5. **Pin its sums:** copy the two lines of the published `SHA256SUMS` into
+   [`plugins/kanban/app/releases.lock`](app/releases.lock) and commit:
+   ```json
+   {"kanban-v<version>": {"Kanban.app.zip": "<sha256>", "Kanban.dmg": "<sha256>"}}
+   ```
+   Until that entry exists the installer verifies against the release's own `SHA256SUMS` and says "integrity only";
+   once it exists, a download that disagrees is refused.
+
+**Signing (optional).** Add these repository secrets and the next tag push signs with the Developer ID and notarises;
+without them builds stay unsigned (ad-hoc):
+
+| Secret | Value |
+|---|---|
+| `APPLE_CERTIFICATE` | the Developer ID Application certificate, `.p12`, base64 |
+| `APPLE_CERTIFICATE_PASSWORD` | its export password |
+| `APPLE_SIGNING_IDENTITY` | e.g. `Developer ID Application: <name> (<team id>)` |
+| `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` | notarisation: Apple ID, app-specific password, team id |
+
 ## Tests
 
 ```bash
 python3 -m unittest discover -s plugins/kanban/tests -p 'test_*.py'
-(cd plugins/kanban/app/src-tauri && cargo test)
+(cd plugins/kanban/app/src-tauri && cargo test --locked)
+python3 -m unittest discover -s tests -p 'test_*.py'     # installer, python.lock, release workflow, versions and docs
 claude plugin validate plugins/kanban && claude plugin validate .
 ```

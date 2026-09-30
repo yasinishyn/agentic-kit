@@ -4,14 +4,14 @@
     "PostToolUse": [
       {
         "hooks": [
-          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py\"", "timeout": 2 }
+          { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/kpython\" --quiet-missing \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py\"", "timeout": 2 }
         ]
       }
     ],
     "Stop": [
       {
         "hooks": [
-          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py\"", "timeout": 2 }
+          { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/kpython\" --quiet-missing \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py\"", "timeout": 2 }
         ]
       }
     ]

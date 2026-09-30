@@ -5,7 +5,8 @@
 | Spec | `kanban-v0-3-1-onboarding-ux` · [01-discovery.md](01-discovery.md) (Agreed 2026-09-29; FR-13, 16, 17 and NFR-01 amended in Architect by Q12–Q15) |
 | Tier | Full (release pipeline, bundled runtime, installer download) |
 | Builds on | v0.3 (`kanban-v0-3-agent-board`, architecture §3.1–3.3 plug-in contracts, §8 security) |
-| Status | Draft rev 3 — waiting for the user's approval ("execute") |
+| Status | Rev 3 (architect reviews 1–2 addressed) |
+| Approval | Approved for execution by the user in chat on 2026-09-29 (includes the parallel-streams opt-in) |
 
 Paths are relative to `plugins/kanban/`; repo-root paths start with `/` (e.g. `/install.py`, `/tests/test_install.py`).
 

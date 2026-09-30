@@ -1,6 +1,6 @@
 [package]
 name = "kanban-app"
-version = "0.3.0"
+version = "0.3.1"
 description = "Kanban desktop shell: runs the board daemon and shows the board with an embedded terminal (PRD-07)"
 edition = "2021"
 publish = false
@@ -19,6 +19,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 portable-pty = "0.9"
+tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 url = "2"

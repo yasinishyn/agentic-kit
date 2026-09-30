@@ -1,6 +1,8 @@
 /* PRD-05 UI module: approval dialog before moves into execution, "diff" link on cards whose spec changed since
-   approval, and three drawer panels (spec editor, changes since approval, read-only git). Uses only window.kanban
-   (architecture §3.2); every dynamic string goes through textContent (strict CSP, no inline handlers). */
+   approval, and three drawer panels: the spec editor and "changes since approval" in the Spec tab, read-only git in
+   the Git tab (v0.3.1 tab hints). The editor is an Edit toggle in the Spec tab's bar: editing hides the rendered
+   view and shows the v0.3 editor (same save rules). Uses only window.kanban (architecture §4.1); every dynamic
+   string goes through textContent (strict CSP, no inline handlers). */
 (function () {
   "use strict";
 
@@ -213,7 +215,30 @@
 
   // ---------------------------------------------------------------- drawer: spec editor
   const editor = {ticket: null, path: null, text: "", sha: null, dirty: false, message: "", error: false,
-                  loading: false};
+                  loading: false, editing: false};
+
+  /* The Edit toggle lives in the Spec tab's bar (core app.js); without a bar (older core) the editor always shows. */
+  function editToggle(box, ticket, rerender) {
+    const tabpanel = box.closest("[role=tabpanel]");
+    const bar = tabpanel && tabpanel.querySelector(".spec-bar");
+    if (!bar) return true;
+    let toggle = bar.querySelector(".sp-edit-toggle");
+    if (!toggle) {
+      toggle = button("Edit", () => {
+        editor.editing = !editor.editing;
+        const viewing = bar.querySelector(".spec-file");
+        if (editor.editing && !editor.dirty && viewing && viewing.value && viewing.value !== editor.path) {
+          Object.assign(editor, {path: viewing.value, text: "", sha: null, message: "", error: false});
+        }
+        rerender();
+      }, {className: "sp-edit-toggle"});
+      bar.append(toggle);
+    }
+    toggle.textContent = editor.editing ? "Done editing" : "Edit";
+    toggle.setAttribute("aria-pressed", String(editor.editing));
+    tabpanel.classList.toggle("sp-editing", editor.editing);
+    return editor.editing;
+  }
 
   async function loadFile(rel, rerender) {
     editor.loading = rel;
@@ -255,9 +280,13 @@
     const selection = hadFocus ? [hadFocus.selectionStart, hadFocus.selectionEnd, hadFocus.scrollTop] : null;
     if (editor.ticket !== ticket.id) {
       Object.assign(editor, {ticket: ticket.id, path: ticket.path || ticket.files[0] || null, text: "", sha: null,
-                             dirty: false, message: "", error: false});
+                             dirty: false, message: "", error: false, editing: false});
     }
     const rerender = () => { if (box.isConnected) renderEditor(box, ticket); };
+    if (!editToggle(box, ticket, rerender)) {
+      box.replaceChildren();
+      return;
+    }
     const id = `sp-editor-${++seq}`;
     const select = el("select", {id: `${id}-file`, className: "sp-file-pick"},
       ticket.files.map((f) => el("option", {value: f, text: f.split("/").slice(3).join("/") || f})));
@@ -319,7 +348,7 @@
     }
   }
 
-  K.addDrawerPanel("specs-editor", "Edit spec", renderEditor);
+  K.addDrawerPanel("specs-editor", "Edit spec", renderEditor, {tab: "spec"});
 
   // ---------------------------------------------------------------- drawer: changes since approval
   K.addDrawerPanel("specs-diff", "Changes since approval", (box, ticket) => {
@@ -343,7 +372,7 @@
       }
       box.replaceChildren(...parts);
     }).catch((err) => box.replaceChildren(el("p", {className: "sp-error", text: `Cannot load the diff: ${err.message}`})));
-  });
+  }, {tab: "spec"});
 
   // ---------------------------------------------------------------- drawer: git (read-only)
   function fileList(title, items) {
@@ -384,5 +413,5 @@
     }).catch((err) => box.replaceChildren(el("p", {className: "sp-error", text: `Cannot load git: ${err.message}`})));
   }
 
-  K.addDrawerPanel("specs-git", "Git (read-only)", renderGit);
+  K.addDrawerPanel("specs-git", "Git (read-only)", renderGit, {tab: "git"});
 })();

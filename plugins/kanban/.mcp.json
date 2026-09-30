@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "kanban": {
-      "command": "python3",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/server.py"]
+      "command": "sh",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/kpython", "${CLAUDE_PLUGIN_ROOT}/scripts/server.py"]
     }
   }
 }

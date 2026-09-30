@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
 <title>Kanban</title>
 <link rel="stylesheet" href="/ui/board.css">
 <script src="/ui/board.js" defer></script>
@@ -12,31 +13,57 @@
 <body>
 <a class="skip" href="#board">Skip to the board</a>
 <header class="top">
-  <h1>Kanban</h1>
+  <h1 class="brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>Kanban</h1>
   <label class="project-pick">
     <span class="sr-only">Project</span>
     <select id="project" aria-label="Project"></select>
   </label>
-  <span id="status" class="muted" role="status"></span>
-  <span class="muted hint">Tickets are <code>.SDD/specs/&lt;slug&gt;/README.md</code> · drag a card or use ← / →</span>
-  <form id="new-ticket" class="new-ticket">
-    <label for="new-ticket-title" class="sr-only">New ticket title</label>
-    <input id="new-ticket-title" name="title" maxlength="120" required placeholder="New ticket title…">
-    <button type="submit">Create</button>
-  </form>
+  <button type="button" id="add-project">Add project</button>
+  <div class="anchor">
+    <button type="button" id="new-ticket-toggle" class="btn-primary" aria-expanded="false"
+            aria-controls="new-ticket-pop">New ticket</button>
+    <div id="new-ticket-pop" class="popover" hidden>
+      <form id="new-ticket" class="new-ticket">
+        <label for="new-ticket-title" class="sr-only">New ticket title</label>
+        <input id="new-ticket-title" name="title" maxlength="120" required placeholder="What should be built?">
+        <button type="submit" class="btn-primary">Create</button>
+      </form>
+    </div>
+  </div>
+  <span id="status" class="muted header-status" role="status"></span>
+  <div class="header-end">
+    <button type="button" id="conn-chip" class="chip" aria-expanded="false" aria-controls="project-sheet"
+            title="Claude sessions connected to this project"><span class="dot" aria-hidden="true"></span><span
+            id="conn-text">No sessions</span></button>
+    <button type="button" id="help-toggle" aria-haspopup="menu" aria-expanded="false"
+            aria-label="Help and project actions">Help</button>
+  </div>
 </header>
 <div id="live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 <div id="auth" class="notice" hidden>
-  <p>This board needs its access token. Open it with <code>python3 &lt;plugin&gt;/scripts/daemon.py --open</code>
-     (or from the Kanban app).</p>
+  <p>This board needs its access token. Open it from the Kanban app, or run <code>daemon.py --open</code> in a
+     project.</p>
 </div>
-<main id="board" class="board" aria-label="Board" tabindex="-1"></main>
+<section id="welcome" class="welcome" hidden aria-labelledby="welcome-title"></section>
+<div class="board-wrap">
+  <main id="board" class="board" aria-label="Board" tabindex="-1"></main>
+</div>
 <aside id="drawer" class="drawer" hidden aria-labelledby="drawer-title">
   <header class="drawer-head">
     <h2 id="drawer-title"></h2>
     <button type="button" id="drawer-close" aria-label="Close details">Close</button>
   </header>
+  <p id="drawer-sub" class="muted drawer-sub"></p>
+  <div id="drawer-tabs" class="tabs" role="tablist" aria-label="Ticket sections"></div>
   <div id="drawer-body" class="drawer-body"></div>
+</aside>
+<aside id="project-sheet" class="drawer sheet" hidden aria-labelledby="sheet-title">
+  <header class="drawer-head">
+    <h2 id="sheet-title">Project</h2>
+    <button type="button" id="sheet-close" aria-label="Close project panel">Close</button>
+  </header>
+  <p id="sheet-sub" class="muted drawer-sub"></p>
+  <div id="project-panels" class="drawer-body"></div>
 </aside>
 </body>
 </html>

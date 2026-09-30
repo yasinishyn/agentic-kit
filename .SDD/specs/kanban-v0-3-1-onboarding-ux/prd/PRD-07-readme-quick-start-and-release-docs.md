@@ -1,6 +1,6 @@
 ---
 title: PRD-07 - README quick start, release docs and version 0.3.1
-status: todo
+status: done
 updated: 2026-09-29
 ---
 
@@ -53,13 +53,13 @@ including pinning sums, runtime licence notices, and version 0.3.1 in all five p
 | `NOTICE.md` runtime rows | readers; `test_notice_lists_runtime_licences` (reads `python.lock`) | missing row → test fails |
 
 ## Acceptance criteria
-- [ ] All five versions (and the `Cargo.lock` root package) read 0.3.1; `test_versions_match` passes (step 2)
-- [ ] Quick start covers the three install routes; the Gatekeeper section names the macOS 15+ "Open Anyway" route and `xattr` (step 4, FR-15)
-- [ ] Troubleshooting has the rows listed in step 4, including the older-app/schema row (step 4, FR-11)
-- [ ] Releasing section includes pinning `SHA256SUMS` into `releases.lock` and the dispatch dry run (step 4)
-- [ ] Every image and relative link in both READMEs resolves (step 3–5)
-- [ ] `NOTICE.md` lists every `licence_files` entry of `python.lock` (step 6)
-- [ ] `cargo test --locked` still passes after the version bump (step 2)
+- [x] All five versions (and the `Cargo.lock` root package) read 0.3.1; `test_versions_match` passes (step 2)
+- [x] Quick start covers the three install routes; the Gatekeeper section names the macOS 15+ "Open Anyway" route and `xattr` (step 4, FR-15)
+- [x] Troubleshooting has the rows listed in step 4, including the older-app/schema row (step 4, FR-11)
+- [x] Releasing section includes pinning `SHA256SUMS` into `releases.lock` and the dispatch dry run (step 4)
+- [x] Every image and relative link in both READMEs resolves (step 3–5)
+- [x] `NOTICE.md` lists every `licence_files` entry of `python.lock` (step 6)
+- [x] `cargo test --locked` still passes after the version bump (step 2)
 
 ## Edge cases
 | Case | Handling | Priority |

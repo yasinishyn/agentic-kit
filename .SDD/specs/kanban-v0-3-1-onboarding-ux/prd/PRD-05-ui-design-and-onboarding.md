@@ -1,6 +1,6 @@
 ---
 title: PRD-05 - UI design pass, onboarding and plug-in API (web)
-status: todo
+status: done
 updated: 2026-09-29
 ---
 
@@ -66,18 +66,18 @@ live connection panel, a tabbed ticket panel and the extended plug-in API that P
 | `pick_folder` (PRD-06) | app only | `null` (cancel) → dialog stays open; error → path field shown |
 
 ## Acceptance criteria
-- [ ] Colour literals in PRD-05's files (`ui/board.css`, `ui/app.js`, `ui/board.js`, `ui/index.html`, `ui/modules/{runs,specs}.{js,css}`, `ui/modules/transcript.js`) appear only in the `:root`/dark token blocks; contrast ≥ 4.5:1 for text tokens in both themes (step 2, NFR-02)
-- [ ] `addDrawerPanel` without a tab lands in Overview; with `{tab: "terminal"}` in Terminal; `addProjectPanel` renders immediately and on project switch (step 3)
-- [ ] Header shows the five controls; no developer-internal text outside the help menu (step 4, FR-10)
-- [ ] With no project the welcome shows; with a project, "Connect Claude" is done only when a live interactive session with channels exists (a Code-tab session does not complete it) (step 5, FR-01)
-- [ ] Add project always shows the dry-run preview with the resolved path before registering; `~` shows the home warning (step 6, FR-02)
-- [ ] The connection panel updates within 1 s of a session registering or its subscription closing, without reload (step 7, FR-04)
-- [ ] Without `connectClaude` the panel shows the copy command; with it, the button calls it (step 7, FR-05)
-- [ ] The Code-tab explanation appears in the connection panel and on queued cards, with Copy prompt / Run headless (steps 7, 11, FR-06)
-- [ ] At 1280×800 every column is visible or a labelled rail; no silent horizontal overflow (step 8, FR-07)
-- [ ] Card moves are reachable by keyboard through the "⋯" menu (step 9, FR-09)
-- [ ] Tabs work with arrow keys and show a visible focus ring; Spec renders by default, Edit keeps v0.3 rules (step 10, FR-08, NFR-02)
-- [ ] No inline script, no new `innerHTML` sinks beyond the existing `/view` fragment; text via `textContent` (NFR-03)
+- [x] Colour literals in PRD-05's files (`ui/board.css`, `ui/app.js`, `ui/board.js`, `ui/index.html`, `ui/modules/{runs,specs}.{js,css}`, `ui/modules/transcript.js`) appear only in the `:root`/dark token blocks; contrast ≥ 4.5:1 for text tokens in both themes (step 2, NFR-02)
+- [x] `addDrawerPanel` without a tab lands in Overview; with `{tab: "terminal"}` in Terminal; `addProjectPanel` renders immediately and on project switch (step 3)
+- [x] Header shows the five controls; no developer-internal text outside the help menu (step 4, FR-10)
+- [x] With no project the welcome shows; with a project, "Connect Claude" is done only when a live interactive session with channels exists (a Code-tab session does not complete it) (step 5, FR-01)
+- [x] Add project always shows the dry-run preview with the resolved path before registering; `~` shows the home warning (step 6, FR-02)
+- [x] The connection panel updates within 1 s of a session registering or its subscription closing, without reload (step 7, FR-04)
+- [x] Without `connectClaude` the panel shows the copy command; with it, the button calls it (step 7, FR-05)
+- [x] The Code-tab explanation appears in the connection panel and on queued cards, with Copy prompt / Run headless (steps 7, 11, FR-06)
+- [x] At 1280×800 every column is visible or a labelled rail; no silent horizontal overflow (step 8, FR-07)
+- [x] Card moves are reachable by keyboard through the "⋯" menu (step 9, FR-09)
+- [x] Tabs work with arrow keys and show a visible focus ring; Spec renders by default, Edit keeps v0.3 rules (step 10, FR-08, NFR-02)
+- [x] No inline script, no new `innerHTML` sinks beyond the existing `/view` fragment; text via `textContent` (NFR-03)
 
 ## Edge cases
 | Case | Handling | Priority |

@@ -1,0 +1,3 @@
+{
+  "_format": "Pinned sha256 of published Kanban releases, read by install.py (ADR-003, Q14). One entry per tag: {\"kanban-v0.3.1\": {\"Kanban.app.zip\": \"<sha256>\", \"Kanban.dmg\": \"<sha256>\"}} (lowercase 64-hex, copied from the release's SHA256SUMS after publishing it). A pinned entry is trusted over the release's own SHA256SUMS (disagreement = refused); without one the installer uses the release's SHA256SUMS and says 'integrity only'. Keys starting with _ are comments."
+}

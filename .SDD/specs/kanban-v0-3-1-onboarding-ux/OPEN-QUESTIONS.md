@@ -22,6 +22,8 @@ Register only: one row per question. Record each decision in its row and in the 
 | Q14 | Authenticity of downloaded releases while builds are unsigned | kit owner | Decided | Decided by kit owner, 2026-09-29: after publishing a release the developer commits its SHA256SUMS into the kit at `plugins/kanban/app/releases.lock` (tag → sha256 per asset); the installer trusts pinned sums over the release's own `SHA256SUMS` when an entry exists and refuses on mismatch; without a pinned entry it falls back to the release's `SHA256SUMS` and says so. Applied in ADR-003, PRD-02, PRD-07; amends KB31-FR-16 |
 | Q15 | Installer: does `--all` include the app, and which repository's releases does a fork download? | kit owner | Decided | Decided by kit owner, 2026-09-29: `--all` includes the app download on macOS; the release base URL is derived from `AGENTIC_KIT_REPO` (`github.com/<owner>/<repo>`) so forks download their own releases. Applied in ADR-003, PRD-02; amends KB31-FR-16, 17 |
 
+| Q18 | Licence texts of libraries statically linked into the bundled Python (OpenSSL Apache-2.0, SQLite, libffi, zlib, bzip2, xz, mpdecimal, expat, ncurses, libedit, …) — the archive ships only CPython's LICENSE.txt | kit owner | Decided | Decided by kit owner, 2026-09-30: ship the component licence texts inside Kanban.app — collected from upstream at the versions python-build-standalone 20260924 uses, pinned in the repo, copied next to CPython's licence by `fetch-python.sh`, checked by a test; NOTICE.md lists them · amends Q13, PRD-01, PRD-07 |
+
 ## UI
 | # | Question | Owner | Status | Decision / next step |
 |---|---|---|---|---|

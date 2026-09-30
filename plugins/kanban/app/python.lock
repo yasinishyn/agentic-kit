@@ -1,0 +1,21 @@
+{
+  "version": "3.12.14",
+  "build_date": "20260924",
+  "flavor": "install_only_stripped",
+  "max_unpacked_mb": 45,
+  "licence_files": [
+    "lib/python3.12/LICENSE.txt"
+  ],
+  "arches": {
+    "arm64": {
+      "triple": "aarch64-apple-darwin",
+      "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260924/cpython-3.12.14%2B20260924-aarch64-apple-darwin-install_only_stripped.tar.gz",
+      "sha256": "c2edb321cd32ec2b170df208db0446dccc4398db602ca27cf2079098fb1f7d9d"
+    },
+    "x86_64": {
+      "triple": "x86_64-apple-darwin",
+      "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260924/cpython-3.12.14%2B20260924-x86_64-apple-darwin-install_only_stripped.tar.gz",
+      "sha256": "7ea9761b9069c10b9a20531d568645849d604c59e9c7f11f6659f1e1790c968e"
+    }
+  }
+}
