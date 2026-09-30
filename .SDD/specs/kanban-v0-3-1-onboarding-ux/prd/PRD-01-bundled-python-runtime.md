@@ -103,6 +103,11 @@ app that prefers it and never writes bytecode into its bundle.
 - `plugins/kanban/app/.gitignore`
 - `tests/test_app_python_lock.py`
 - `tests/fixtures/fake_python/**`
+- `plugins/kanban/app/licences/python-runtime/**` (Q18 amendment, 2026-09-30: component licence texts, SOURCES.md)
+
+Amended by Q18 (2026-09-30): `fetch-python.sh` copies `app/licences/python-runtime/` into each tree as `licences/`,
+`python.lock` `licence_files` lists them, `--licences-only` refreshes them without a download, and the prune also
+drops the Tcl packages `itcl*`/`thread*`.
 
 ## Forbidden files
 - Other PRDs' owned files, notably `tauri.conf.json`, `Cargo.toml`, `Cargo.lock`, `build.rs`, `scope.rs`; `.claude/**`; `.SDD/templates/**`

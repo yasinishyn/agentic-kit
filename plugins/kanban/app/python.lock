@@ -4,7 +4,15 @@
   "flavor": "install_only_stripped",
   "max_unpacked_mb": 45,
   "licence_files": [
-    "lib/python3.12/LICENSE.txt"
+    "lib/python3.12/LICENSE.txt",
+    "licences/openssl-3.5.8.txt",
+    "licences/sqlite-3.53.1.txt",
+    "licences/libffi-3.4.8.txt",
+    "licences/bzip2-1.0.8.txt",
+    "licences/xz-5.8.4.txt",
+    "licences/mpdecimal-4.0.0.txt",
+    "licences/expat-2.8.5.txt",
+    "licences/libuuid-1.0.3.txt"
   ],
   "arches": {
     "arm64": {

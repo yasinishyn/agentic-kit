@@ -341,6 +341,8 @@ class DaemonModeTests(Base):
         self.assertEqual(len(notices), 1, p.proc_stderr)
         self.assertIn("Add project", notices[0])
         self.assertIn("daemon.py --open --project", notices[0])
+        self.assertIn("scripts/kpython ", notices[0])
+        self.assertNotIn("python3 ", notices[0])
         self.assertNotIn("local mode (board inside this session", p.proc_stderr)
 
     def test_live_session_removed_goes_local(self):

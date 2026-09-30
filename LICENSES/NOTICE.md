@@ -18,19 +18,35 @@ vendored unmodified; their version and checksums are in `plugins/kanban/ui/vendo
 
 Release builds of the Kanban desktop app (`Kanban.app`) bundle a Python runtime, one per architecture, pinned in
 `plugins/kanban/app/python.lock`. It ships **inside the app only**: it is not part of the kit's source tree and it is
-not copied into projects by `install.py`. Its licence file is kept in the app (the build never prunes it; a test checks
-it).
+not copied into projects by `install.py`. Its licence files are kept in the app (the build never prunes them; a test
+checks them).
 
 | Upstream | Version | Used for | Licence |
 |---|---|---|---|
 | [CPython](https://www.python.org/) by the Python Software Foundation | 3.12.14 | the interpreter and standard library under `Kanban.app/Contents/Resources/python/<arch>/` (runs the board daemon and, through `scripts/kpython`, the plugin) | PSF License Agreement (Python Software Foundation License Version 2) and the other terms in the same file — `Kanban.app/Contents/Resources/python/arm64/lib/python3.12/LICENSE.txt`, `Kanban.app/Contents/Resources/python/x86_64/lib/python3.12/LICENSE.txt` |
-| [astral-sh/python-build-standalone](https://github.com/astral-sh/python-build-standalone) | release `20260924`, `install_only_stripped` (`aarch64-apple-darwin`, `x86_64-apple-darwin`) | the relocatable build of that CPython | build scripts: BSD 3-Clause; the distribution's terms are those of its components, see below |
+| [astral-sh/python-build-standalone](https://github.com/astral-sh/python-build-standalone) | release `20260924`, `install_only_stripped` (`aarch64-apple-darwin`, `x86_64-apple-darwin`) | the relocatable build of that CPython | build scripts: BSD 3-Clause; the distribution's terms are those of its components, listed below |
 
-The python-build-standalone distribution links third-party libraries statically into the interpreter and its extension
-modules (among them OpenSSL, SQLite, libffi, zlib, bzip2, xz/liblzma, mpdecimal, expat, ncurses and libedit).
-The `install_only_stripped` archive carries only CPython's `LICENSE.txt`, listed above; the licences of
-the statically linked components are documented by the project at
-<https://gregoryszorc.com/docs/python-build-standalone/main/running.html#licensing> and recorded per component in the
-`PYTHON.json` of its full archives.
+python-build-standalone links these third-party libraries statically into the interpreter and its extension modules.
+The `install_only_stripped` archive carries only CPython's `LICENSE.txt`, so their licence texts are pinned in the kit
+(`plugins/kanban/app/licences/python-runtime/`, taken from each project's own licence file at these versions, libuuid's
+from python-build-standalone's copy; `plugins/kanban/app/licences/python-runtime/SOURCES.md` lists each source URL and
+checksum) and `fetch-python.sh` copies them into every runtime as
+`licences/`, next to CPython's licence:
+
+| Component | Version | Used by | Licence (SPDX) and file in the app |
+|---|---|---|---|
+| [OpenSSL](https://www.openssl.org/) | 3.5.8 | `ssl`, `hashlib` | `Apache-2.0` — `Kanban.app/Contents/Resources/python/arm64/licences/openssl-3.5.8.txt`, `Kanban.app/Contents/Resources/python/x86_64/licences/openssl-3.5.8.txt` |
+| [SQLite](https://sqlite.org/) | 3.53.1 | `sqlite3` (public domain; the text is SQLite's own notice and blessing) | `blessing` — `Kanban.app/Contents/Resources/python/arm64/licences/sqlite-3.53.1.txt`, `Kanban.app/Contents/Resources/python/x86_64/licences/sqlite-3.53.1.txt` |
+| [libffi](https://sourceware.org/libffi/) | 3.4.8 | `ctypes` | `MIT` — `Kanban.app/Contents/Resources/python/arm64/licences/libffi-3.4.8.txt`, `Kanban.app/Contents/Resources/python/x86_64/licences/libffi-3.4.8.txt` |
+| [bzip2](https://sourceware.org/bzip2/) (libbzip2) | 1.0.8 | `bz2` | `bzip2-1.0.6` — `Kanban.app/Contents/Resources/python/arm64/licences/bzip2-1.0.8.txt`, `Kanban.app/Contents/Resources/python/x86_64/licences/bzip2-1.0.8.txt` |
+| [XZ Utils (liblzma)](https://tukaani.org/xz/) | 5.8.4 | `lzma` | `0BSD` — `Kanban.app/Contents/Resources/python/arm64/licences/xz-5.8.4.txt`, `Kanban.app/Contents/Resources/python/x86_64/licences/xz-5.8.4.txt` |
+| [mpdecimal](https://www.bytereef.org/mpdecimal/) (libmpdec) | 4.0.0 | `decimal` | `BSD-2-Clause` — `Kanban.app/Contents/Resources/python/arm64/licences/mpdecimal-4.0.0.txt`, `Kanban.app/Contents/Resources/python/x86_64/licences/mpdecimal-4.0.0.txt` |
+| [Expat](https://libexpat.github.io/) | 2.8.5 | `xml.parsers.expat`, `xml.etree` | `MIT` — `Kanban.app/Contents/Resources/python/arm64/licences/expat-2.8.5.txt`, `Kanban.app/Contents/Resources/python/x86_64/licences/expat-2.8.5.txt` |
+| libuuid | 1.0.3 | `uuid` | `BSD-3-Clause` — `Kanban.app/Contents/Resources/python/arm64/licences/libuuid-1.0.3.txt`, `Kanban.app/Contents/Resources/python/x86_64/licences/libuuid-1.0.3.txt` |
+
+On macOS the runtime uses the system's zlib, ncurses and libedit (they are not bundled); Tcl/Tk are pruned with
+`tkinter`. python-build-standalone documents its component licences at
+<https://gregoryszorc.com/docs/python-build-standalone/main/running.html#licensing> and in the `PYTHON.json` of its
+full archives (secondary reference).
 
 Everything else in the kit is original to the kit.

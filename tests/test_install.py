@@ -392,23 +392,63 @@ class KanbanAppTests(unittest.TestCase):
                 self.assertEqual(tree_digest(self.apps / "Kanban.app"), before)
                 self.assertEqual(sorted(p.name for p in self.apps.iterdir()), ["Kanban.app"])
 
+    def fake_ps(self, *procs) -> Path:
+        """A `ps` on PATH listing (pid, executable, args) like `ps -axo pid=,comm=` / `pid=,args=` would."""
+        bin_dir = self.t / "bin"
+        bin_dir.mkdir(exist_ok=True)
+        comm = "".join(f"echo '{pid} {exe}'\n" for pid, exe, _ in procs)
+        args = "".join(f"echo '{pid} {exe} {rest}'\n" for pid, exe, rest in procs)
+        (bin_dir / "ps").write_text(f"#!/bin/sh\ncase \"$*\" in\n  *args=*)\n{args};;\n  *)\n{comm};;\nesac\n")
+        (bin_dir / "ps").chmod(0o755)
+        return bin_dir
+
+    def bundled_python(self) -> Path:
+        return self.apps / "Kanban.app/Contents/Resources/python/arm64/bin/python3"
+
     @ON_MAC
     def test_app_running_deferred(self):
         kit = mini_kit(self.t)
         before = self.old_app("0.3.0")
-        bin_dir = self.t / "bin"
-        bin_dir.mkdir()
-        exe = self.apps / "Kanban.app/Contents/Resources/python/arm64/bin/python3"
-        (bin_dir / "ps").write_text(f"#!/bin/sh\necho '  1 /sbin/launchd'\necho '4242 {exe}'\n")
-        (bin_dir / "ps").chmod(0o755)
+        bin_dir = self.fake_ps(("1", "/sbin/launchd", ""), ("4242", self.apps / "Kanban.app/Contents/MacOS/kanban", ""))
         with fake.FakeRelease() as rel:
             rel.release("kanban-v0.3.1", self.zip_bytes("0.3.1"))
             res, out = self.install_app(kit, rel, env=app_env(self.home, rel.base, path_first=bin_dir))
         self.assertNotEqual(res.returncode, 0, out)
         self.assertIn("deferred", out)
+        self.assertIn("Quit Kanban", out)
         self.assertIn("install.py --only kanban-app", out)
         self.assertEqual(tree_digest(self.apps / "Kanban.app"), before)
         self.assertEqual(sorted(p.name for p in self.apps.iterdir()), ["Kanban.app"])
+
+    @ON_MAC
+    def test_app_board_daemon_on_bundled_python_deferred_with_stop_command(self):
+        # quitting the app leaves the board daemon running on the bundled Python: the note says how to stop it
+        kit = mini_kit(self.t)
+        before = self.old_app("0.3.0")
+        daemon = "/plugins/kanban/scripts/daemon.py"
+        bin_dir = self.fake_ps(("4243", self.bundled_python(), f"-E -B {daemon} --foreground"))
+        with fake.FakeRelease() as rel:
+            rel.release("kanban-v0.3.1", self.zip_bytes("0.3.1"))
+            res, out = self.install_app(kit, rel, env=app_env(self.home, rel.base, path_first=bin_dir))
+        self.assertNotEqual(res.returncode, 0, out)
+        self.assertIn("deferred", out)
+        self.assertIn(f"sh /plugins/kanban/scripts/kpython {daemon} --stop", out)
+        self.assertEqual(tree_digest(self.apps / "Kanban.app"), before)
+
+    @ON_MAC
+    def test_app_claude_sessions_on_bundled_python_do_not_block(self):
+        # every open Claude session runs the plugin's MCP server (and hooks) on the bundled Python; they must not
+        # hold an update back forever: they run by path, so they pick up the new runtime when restarted
+        kit = mini_kit(self.t)
+        self.old_app("0.3.0")
+        bin_dir = self.fake_ps(("5001", self.bundled_python(), "-E -B /plugins/kanban/scripts/server.py"),
+                               ("5002", self.bundled_python(), "-E -B /plugins/kanban/scripts/hook.py"))
+        with fake.FakeRelease() as rel:
+            rel.release("kanban-v0.3.1", self.zip_bytes("0.3.1"))
+            res, out = self.install_app(kit, rel, env=app_env(self.home, rel.base, path_first=bin_dir))
+        self.assertEqual(res.returncode, 0, out)
+        self.assertIn("Installed Kanban.app 0.3.1", out)
+        self.assertIn("2 Claude process(es)", out)
 
     # ---------------------------------------------------------------- redirects and hosts
     @ON_MAC
@@ -511,6 +551,17 @@ class KanbanAppTests(unittest.TestCase):
         self.assertNotIn("cargo tauri", out)
         self.assertFalse(self.apps.exists())
         self.assertFalse((self.proj / ".claude").exists())
+
+    @ON_MAC
+    def test_app_repo_credentials_never_printed(self):
+        # a clone's origin can carry a token; the "not a github.com repository" note must not echo it
+        env = app_env(self.home, repo="https://x-access-token:ghp_SYNTHETIC0000@github.com/alice/agentic-kit.git")
+        res = run_raw("--only", "kanban-app", "--dry-run", env=env)
+        out = res.stdout + res.stderr
+        self.assertIn("Skipped", out)
+        self.assertIn("github.com/alice/agentic-kit", out)
+        self.assertNotIn("ghp_SYNTHETIC0000", out)
+        self.assertNotIn("x-access-token", out)
 
     @ON_MAC
     def test_app_base_url_from_repo(self):

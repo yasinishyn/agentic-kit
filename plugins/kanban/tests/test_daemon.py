@@ -7,6 +7,7 @@ import http.client
 import json
 import os
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -103,8 +104,11 @@ class SpawnFlagsTests(unittest.TestCase):
     def argv_under(self, *flags):
         code = ("import sys; sys.path.insert(0, %r); import daemon; print(daemon.spawn_argv()[:len(sys.argv)+4])"
                 % str(helpers.SCRIPTS))
+        # the flags under test must come only from the command line: drop inherited PYTHON* variables
+        # (e.g. PYTHONDONTWRITEBYTECODE=1 in a developer shell would legitimately turn into -B)
+        env = {k: v for k, v in os.environ.items() if not k.startswith("PYTHON")}
         out = subprocess.run([sys.executable, *flags, "-c", code], capture_output=True, text=True, timeout=30,
-                             env={**os.environ, "KANBAN_HOME": tempfile.mkdtemp(), "KANBAN_NO_DAEMON": "1"})
+                             env={**env, "KANBAN_HOME": tempfile.mkdtemp(), "KANBAN_NO_DAEMON": "1"})
         self.assertEqual(out.returncode, 0, out.stderr)
         return eval(out.stdout.strip())  # a printed list of str (our own output)
 
@@ -211,6 +215,22 @@ class LifecycleTests(unittest.TestCase):
                 self.assertEqual(sorted(p.name for p in home.iterdir()), ["client.token", "ui.token"])
             finally:
                 shutil.rmtree(home, ignore_errors=True)
+
+    def test_stop_a_daemon_that_does_not_answer(self):
+        # a wedged daemon (it ran out of file descriptors on 2026-09-30) answers neither /api/health nor
+        # /api/shutdown: --stop must still stop it instead of saying it is not running
+        d = helpers.TestDaemon(home=self.home).start()
+        try:
+            os.kill(d.proc.pid, signal.SIGSTOP)  # alive, holds daemon.lock, answers nothing
+            out = ensure_cmd(self.home, "--stop")
+            self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+            self.assertIn("Stopped the board daemon", out.stdout)
+            self.assertIn("not answering", out.stdout)
+            d.proc.wait(timeout=10)
+        finally:
+            if d.proc.poll() is None:
+                os.kill(d.proc.pid, signal.SIGCONT)
+            d.stop()
 
     def test_stop_when_not_running(self):
         out = ensure_cmd(self.home, "--stop")
@@ -642,6 +662,55 @@ class SessionsTests(DaemonCase):
             ui.close()
         finally:
             stream.close()
+
+    def test_session_stays_live_while_another_stream_is_open(self):
+        # a reconnecting MCP server can briefly hold two streams: closing the old one must not report the session
+        # disconnected while the new one is open
+        stream = Stream(self.d.port, self.d.ui_token, self.pid)
+        try:
+            stream.next("hello")
+            sid = self.post_session(origin="cli", channel=True)
+            stream.next("session.changed")
+            first = Stream(self.d.port, self.d.client_token, session=sid)
+            first.next("hello")
+            self.assertTrue(stream.next("session.changed")["data"]["live"])
+            second = Stream(self.d.port, self.d.client_token, session=sid)
+            second.next("hello")
+            first.close()
+            time.sleep(1)  # the daemon notices a closed peer within 0.25 s
+            marker = self.d.call("POST", f"/api/projects/{self.pid}/tickets", {"title": "Marker"}, token="ui")
+            self.assertEqual(marker[0], 200, marker)
+            # every session.changed before the marker's board.changed must still say live
+            while True:
+                ev = stream.next()
+                self.assertIsNotNone(ev, "stream ended early")
+                if ev["event"] == "board.changed":
+                    break
+                if ev["event"] == "session.changed":
+                    self.assertTrue(ev["data"]["live"], "reported disconnected while another stream is open")
+            second.close()
+            ev = stream.next("session.changed")
+            self.assertIsNotNone(ev, "session.changed when the last stream closes")
+            self.assertFalse(ev["data"]["live"])
+        finally:
+            stream.close()
+
+
+class ResourceTests(DaemonCase):
+    def db_handles(self) -> int:
+        out = subprocess.run(["lsof", "-p", str(self.d.proc.pid), "-Fn"], capture_output=True, text=True).stdout
+        return sum(1 for line in out.splitlines() if line.startswith("n") and line.endswith("/kanban.db"))
+
+    @unittest.skipUnless(shutil.which("lsof"), "lsof not installed")
+    def test_requests_do_not_leak_db_connections(self):
+        # every request runs on a new thread: a connection kept per thread leaked until the daemon hit the file
+        # limit (macOS default 256) and every request failed with "unable to open database file"
+        before = self.db_handles()
+        for _ in range(150):
+            status, body = self.d.get(f"/api/projects/{self.pid}/board", token="ui")
+            self.assertEqual(status, 200, body)
+        time.sleep(0.5)  # the last request threads finish
+        self.assertLessEqual(self.db_handles(), before + 5)
 
 
 class AddRemoveProjectTests(DaemonCase):

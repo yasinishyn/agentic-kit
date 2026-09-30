@@ -311,8 +311,11 @@ class McpModeTests(Base):
         (created, text), err = self.run_server(("kanban_new_ticket", {"title": "Login"}), ("kanban_board", {}))
         self.assertNotIn("local mode", err)
         info = helpers.read_json(self.home / "daemon.json")
-        self.assertIn(f"Board: http://127.0.0.1:{info['port']}/ (open it with: python3 ", text)
+        # the plugin may run only on the app's bundled Python: the hint goes through kpython, never bare python3
+        self.assertIn(f"Board: http://127.0.0.1:{info['port']}/ (open it with: sh ", text)
+        self.assertIn("scripts/kpython ", text)
         self.assertIn("daemon.py --open)", text)
+        self.assertNotIn("python3 ", text.split("Board:")[1])
         for name in ("client.token", "ui.token"):
             self.assertNotIn((self.home / name).read_text().strip(), text + created + err)
         self.assertFalse((self.root / ".kanban").exists())  # no embedded board in daemon mode

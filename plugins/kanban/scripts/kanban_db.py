@@ -238,14 +238,26 @@ class Store:
             conn = connect(self.path)
             self._local.conn = conn
             with self._lock:
-                self._all.append(conn)
+                # the daemon serves each request on a new thread: close the connections of threads that ended, or
+                # they pile up until the process hits its file limit ("unable to open database file")
+                alive = []
+                for thread, old in self._all:
+                    if thread.is_alive():
+                        alive.append((thread, old))
+                    else:
+                        try:
+                            old.close()
+                        except sqlite3.Error:
+                            pass
+                alive.append((threading.current_thread(), conn))
+                self._all = alive
         return conn
 
     __call__ = conn
 
     def close(self) -> None:
         with self._lock:
-            for conn in self._all:
+            for _, conn in self._all:
                 try:
                     conn.close()
                 except sqlite3.Error:

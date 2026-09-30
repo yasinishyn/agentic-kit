@@ -252,11 +252,16 @@ def run_tool(name: str, a: dict) -> str:
     raise ValueError(f"unknown tool {name}")
 
 
+def daemon_command() -> str:
+    """How a user runs daemon.py: through kpython, which also finds the app's bundled Python (no bare python3)."""
+    here = Path(__file__).resolve()
+    return f"sh {here.with_name('kpython')} {here.with_name('daemon.py')}"
+
+
 def call_tool(name: str, a: dict) -> str:
     if name == "kanban_board":
         if DAEMON:  # never print a token: the developer opens the board with daemon.py --open
-            return (f"{km.render_board(ROOT)}\n\nBoard: {DAEMON['url']} (open it with: python3 "
-                    f"{Path(__file__).resolve().with_name('daemon.py')} --open)")
+            return f"{km.render_board(ROOT)}\n\nBoard: {DAEMON['url']} (open it with: {daemon_command()} --open)"
         return f"{km.render_board(ROOT)}\n\nBoard: {UI_URL or 'web board not running'}"
     if name == "kanban_new_ticket":
         t = km.create_ticket(ROOT, a["title"], a.get("slug"), a.get("summary", ""))
@@ -575,10 +580,9 @@ def removed_notice() -> None:
     if REMOVED.is_set():
         return
     REMOVED.set()
-    daemon_py = Path(__file__).resolve().with_name("daemon.py")
     print(f"kanban: this project was removed from the board; the kanban tools keep working on the markdown "
-          f"(no board in this session). To re-add it: in the Kanban app use Add project, or run: python3 "
-          f"{daemon_py} --open --project \"{ROOT}\"", file=sys.stderr, flush=True)
+          f"(no board in this session). To re-add it: in the Kanban app use Add project, or run: "
+          f"{daemon_command()} --open --project \"{ROOT}\"", file=sys.stderr, flush=True)
 
 
 def register_session(kd, port: int, token: str) -> tuple:

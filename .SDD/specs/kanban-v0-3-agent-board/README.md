@@ -1,7 +1,7 @@
 ---
 title: Kanban v0.3: desktop app, agent hand-off on move, live work indicator, kanban:sdd skill
-status: demo
-updated: 2026-09-28
+status: e2e
+updated: 2026-09-30
 ---
 
 # Kanban v0.3: desktop app, agent hand-off on move, live work indicator, kanban:sdd skill
@@ -14,7 +14,7 @@ Evolve the kanban plugin from a passive board into a local control surface for S
 - [x] Approval
 - [x] Developer
 - [x] QA
-- [ ] Demo
+- [x] Demo
 - [ ] E2E
 
 ## Files

@@ -970,7 +970,8 @@ class Daemon:
             pass
         finally:
             self.bus.unsubscribe(sub)
-            if session_id and not self.stopping.is_set():
+            # a reconnecting session can hold a second stream: it is disconnected only when its last one closes
+            if session_id and not self.stopping.is_set() and session_id not in self.bus.session_ids():
                 self.session_changed(session_id, False)
         return STREAMED
 
@@ -1311,6 +1312,13 @@ def stop(cancel_runs: bool = False, home: Path | None = None) -> tuple:
     tokens = ensure_tokens(home)
     info = probe(home, tokens)
     if not info:
+        # alive and holding the lock but not answering (e.g. out of file descriptors): the lock proves the pid is
+        # this home's daemon, not a reused pid; it cannot cancel runs, so they stay for the next start's pickup
+        stale = read_info(home)
+        pid = stale.get("pid") if stale else None
+        if isinstance(pid, int) and kdb.process_alive(pid) and not _lock_free(home):
+            _terminate(home, pid)
+            return 0, "Stopped the board daemon (it was not answering; see daemon.log)."
         return 0, "The board daemon is not running."
     status, body = api_request(info["port"], "POST", "/api/shutdown", {"cancel_runs": cancel_runs},
                                token=tokens["client"])

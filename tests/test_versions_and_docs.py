@@ -120,6 +120,27 @@ class NoticeTests(unittest.TestCase):
                 with self.subTest(arch=arch, licence=rel):
                     self.assertIn(f"Kanban.app/Contents/Resources/python/{arch}/{rel}", notice)
         self.assertIn("not copied into", notice)
+        # Q18: each statically linked component with its version, SPDX id and in-app licence file, one table row
+        components = [
+            ("OpenSSL", "3.5.8", "Apache-2.0", "openssl-3.5.8.txt"),
+            ("SQLite", "3.53.1", "blessing", "sqlite-3.53.1.txt"),
+            ("libffi", "3.4.8", "MIT", "libffi-3.4.8.txt"),
+            ("bzip2", "1.0.8", "bzip2-1.0.6", "bzip2-1.0.8.txt"),
+            ("XZ Utils (liblzma)", "5.8.4", "0BSD", "xz-5.8.4.txt"),
+            ("mpdecimal", "4.0.0", "BSD-2-Clause", "mpdecimal-4.0.0.txt"),
+            ("Expat", "2.8.5", "MIT", "expat-2.8.5.txt"),
+            ("libuuid", "1.0.3", "BSD-3-Clause", "libuuid-1.0.3.txt"),
+        ]
+        rows = [line for line in notice.splitlines() if line.startswith("| ")]
+        for name, version, spdx, file in components:
+            with self.subTest(component=name):
+                self.assertIn(f"licences/{file}", lock["licence_files"])
+                row = [r for r in rows if f"python/arm64/licences/{file}" in r]
+                self.assertEqual(len(row), 1, file)
+                for text in (name, f"| {version} |", f"`{spdx}`", f"python/x86_64/licences/{file}"):
+                    self.assertIn(text, row[0])
+        self.assertIn("plugins/kanban/app/licences/python-runtime/SOURCES.md", notice)
+        self.assertIn("gregoryszorc.com/docs/python-build-standalone", notice)  # secondary reference
 
 
 class PluginReadmeContentTests(unittest.TestCase):

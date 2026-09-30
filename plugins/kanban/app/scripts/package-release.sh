@@ -11,7 +11,7 @@
 # 4. Ad-hoc signs the outer bundle when SIGNING is unset; codesign --verify --deep --strict gates both modes.
 # 5. Smoke test: each bundled interpreter the host can execute (x86_64 on Apple Silicon only with Rosetta) must
 #    `import ssl, sqlite3, ctypes, json`; a failure fails the build.
-# 6. Writes Kanban.app.zip (ditto), Kanban.dmg (full build) and SHA256SUMS (shasum -a 256, bare file names) to
+# 6. Writes Kanban.app.zip (ditto), Kanban.dmg (full build; unsigned: rebuilt with hdiutil from the sealed app) and SHA256SUMS (shasum -a 256, bare file names) to
 #    $DIST_DIR (default: <repo>/dist).
 #
 # SIGNING=1 (set by the release workflow on tag pushes with an imported certificate) needs APPLE_SIGNING_IDENTITY;
@@ -55,6 +55,14 @@ for a in $ARCHES; do
   [ -x "$PY_RES/$a/bin/python3" ] \
     || die "bundled runtime missing: $PY_RES/$a/bin/python3 — run plugins/kanban/app/scripts/fetch-python.sh --arch both"
 done
+# every licence text python.lock lists must be in each runtime (a tree fetched before Q18 has no licences/)
+while IFS= read -r rel; do
+  for a in $ARCHES; do
+    [ -f "$PY_RES/$a/$rel" ] || die "licence file missing from the $a runtime: $rel — run \
+plugins/kanban/app/scripts/fetch-python.sh --licences-only --arch both"
+  done
+done < <(python3 -c 'import json, sys; print("\n".join(json.load(open(sys.argv[1]))["licence_files"]))' \
+           "$APP_DIR/python.lock")
 [ "$PY_RES" = "$DEFAULT_PY_RES" ] || die "KANBAN_PY_RESOURCES is for the pre-build check only; the build bundles $DEFAULT_PY_RES"
 [ -f "$ENTITLEMENTS" ] || die "entitlements missing: $ENTITLEMENTS"
 command -v codesign >/dev/null || die "codesign not found (macOS with Xcode command line tools required)"
@@ -145,9 +153,20 @@ rm -f "$DIST/Kanban.dmg" "$DIST/Kanban.app.zip" "$DIST/SHA256SUMS"
 ditto -c -k --keepParent "$app" "$DIST/Kanban.app.zip"
 files=()
 if [ "$host_only" = 0 ]; then
-  dmgs=("$bundle_dir"/dmg/*.dmg)
-  [ "${#dmgs[@]}" -eq 1 ] && [ -f "${dmgs[0]}" ] || die "expected exactly one DMG in $bundle_dir/dmg"
-  cp "${dmgs[0]}" "$DIST/Kanban.dmg"
+  if [ "$signing" = 1 ]; then
+    dmgs=("$bundle_dir"/dmg/*.dmg)
+    [ "${#dmgs[@]}" -eq 1 ] && [ -f "${dmgs[0]}" ] || die "expected exactly one DMG in $bundle_dir/dmg"
+    cp "${dmgs[0]}" "$DIST/Kanban.dmg"
+  else
+    # Tauri built its DMG before the ad-hoc seal above: rebuild it from the sealed, verified app
+    dmg_src="$(mktemp -d "${TMPDIR:-/tmp}/kanban-dmg.XXXXXX")"
+    ditto "$app" "$dmg_src/Kanban.app"
+    ln -s /Applications "$dmg_src/Applications"
+    hdiutil create -quiet -volname Kanban -srcfolder "$dmg_src" -ov -format UDZO "$DIST/Kanban.dmg" \
+      || { rm -rf "$dmg_src"; die "hdiutil could not build Kanban.dmg"; }
+    rm -rf "$dmg_src"
+    log "Kanban.dmg rebuilt from the sealed app (unsigned release)"
+  fi
   files+=(Kanban.dmg)
 else
   log "--host-only: no DMG"

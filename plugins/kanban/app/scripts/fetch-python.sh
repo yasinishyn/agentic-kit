@@ -1,31 +1,37 @@
 #!/usr/bin/env bash
 # fetch-python.sh — fetch the pinned python-build-standalone runtime(s) for the Kanban app (PRD-01, ADR-001).
 #
-#   fetch-python.sh [--arch arm64|x86_64|both] [--lock <file>] [--dest <dir>]
+#   fetch-python.sh [--arch arm64|x86_64|both] [--lock <file>] [--dest <dir>] [--licences-only]
 #
 # For each arch in app/python.lock: download over HTTPS, verify the sha256 BEFORE unpacking, unpack into a temp dir,
 # prune (tests, idlelib, tkinter, turtledemo, ensurepip, lib2to3, pydoc_data, Tcl/Tk, include/, config-*, static
-# libpython, shipped __pycache__), check every licence file is still there, precompile the stdlib with
+# libpython, shipped __pycache__), copy the component licence texts pinned in app/licences/python-runtime/ into the
+# tree as licences/ (Q18), check every licence file in the lock is there, precompile the stdlib with
 # `compileall --invalidation-mode unchecked-hash` (host-arch bundled interpreter for both trees), enforce the unpacked
 # size ceiling, and only then move the tree to <dest>/<arch> (default: src-tauri/resources/python/<arch>), replacing
 # an older one. Any failure leaves <dest> untouched. `file://` URLs are accepted only with --lock (tests).
+# --licences-only: download nothing; replace <dest>/<arch>/licences/ of an already fetched tree and re-run the licence
+# check (a changed licence pin without a changed runtime).
 # Exit: 0 ok, 1 failure, 2 usage.
 set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
-usage() { echo "usage: fetch-python.sh [--arch arm64|x86_64|both] [--lock <file>] [--dest <dir>]" >&2; }
+usage() { echo "usage: fetch-python.sh [--arch arm64|x86_64|both] [--lock <file>] [--dest <dir>] [--licences-only]" >&2; }
 die() { echo "fetch-python: $*" >&2; exit 1; }
 
 arch="both"
 lock="$APP_DIR/python.lock"
 custom_lock=0
 dest="$APP_DIR/src-tauri/resources/python"
+licence_src="$APP_DIR/licences/python-runtime"
+licences_only=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --arch) [ $# -ge 2 ] || { usage; exit 2; }; arch="$2"; shift 2 ;;
     --lock) [ $# -ge 2 ] || { usage; exit 2; }; lock="$2"; custom_lock=1; shift 2 ;;
     --dest) [ $# -ge 2 ] || { usage; exit 2; }; dest="$2"; shift 2 ;;
+    --licences-only) licences_only=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "fetch-python: unknown argument: $1" >&2; usage; exit 2 ;;
   esac
@@ -59,6 +65,51 @@ case "$max_mb" in ''|*[!0-9]*) die "lock: max_unpacked_mb must be a whole number
 [ -n "$licences" ] || die "lock: licence_files is empty"
 mm="${version%.*}"                      # 3.12.14 → 3.12
 stdlib_rel="lib/python$mm"
+[ -d "$licence_src" ] || die "component licence folder not found: $licence_src"
+
+# add_licences TREE — put the pinned component licence texts into TREE/licences (TREE has none yet)
+add_licences() {
+  [ ! -e "$1/licences" ] || die "unexpected licences/ already in $1"
+  cp -R "$licence_src" "$1/licences"
+}
+
+# check_licences TREE LABEL — every licence file listed in the lock exists in TREE
+check_licences() {
+  while IFS= read -r rel; do
+    [ -f "$1/$rel" ] || die "$2: licence file missing after prune: $rel"
+  done <<EOF
+$licences
+EOF
+}
+
+if [ "$licences_only" = 1 ]; then
+  for a in $arches; do
+    [ -x "$dest/$a/bin/python3" ] || die "$a: no runtime in $dest/$a (run a full fetch first)"
+  done
+  # stage and check every arch outside <dest> (anything left inside a tree is bundled into the app), then swap
+  stage="$(mktemp -d "${TMPDIR:-/tmp}/fetch-python-licences.XXXXXX")"
+  trap 'rm -rf "$stage"' EXIT
+  for a in $arches; do
+    mkdir "$stage/$a"
+    cp -R "$licence_src" "$stage/$a/licences" || die "$a: cannot copy $licence_src"
+    # the check sees the tree as it will be: its own files plus the new licences/
+    while IFS= read -r rel; do
+      case "$rel" in
+        licences/*) [ -f "$stage/$a/$rel" ] || die "$a: licence file missing: $rel" ;;
+        *) [ -f "$dest/$a/$rel" ] || die "$a: licence file missing: $rel" ;;
+      esac
+    done <<EOF
+$licences
+EOF
+  done
+  for a in $arches; do
+    tree="${dest:?}/${a:?}"
+    [ ! -e "$tree/licences" ] || mv "$tree/licences" "$stage/$a/licences.old"
+    mv "$stage/$a/licences" "$tree/licences"
+    echo "fetch-python: $a: licences refreshed in $tree/licences"
+  done
+  exit 0
+fi
 
 work="$(mktemp -d "${TMPDIR:-/tmp}/fetch-python.XXXXXX")"
 cleanup() {
@@ -92,7 +143,9 @@ prune() { # tree
   find "$tree" \( -name 'libtcl*' -o -name 'libtk*' -o -name 'libpython*.a' -o -name '_tkinter*.so' \) \
     -exec rm -rf {} +
   # measured on the real 20260924 archive (2026-09-29): Tcl/Tk 9.0 trees, pip, man pages, pkgconfig, dev launchers
-  rm -rf "$tree"/lib/tcl[0-9]* "$tree"/lib/tk[0-9]* "$tree/lib/pkgconfig" "$tree/share" \
+  # Tcl packages beside them (itcl, thread; measured 2026-09-30) are useless without libtcl and unlicensed here (Q18)
+  rm -rf "$tree"/lib/tcl[0-9]* "$tree"/lib/tk[0-9]* "$tree"/lib/itcl[0-9]* "$tree"/lib/thread[0-9]* \
+         "$tree/lib/pkgconfig" "$tree/share" \
          "$std"/site-packages/pip "$std"/site-packages/pip-*.dist-info
   # the stripped build's interpreter is statically linked: its libpython dylib is dead weight (18 MB) unless the
   # interpreter actually links it, which otool would show
@@ -124,11 +177,8 @@ for a in $arches; do
   [ -x "$tree/bin/python3" ] && [ -d "$tree/$stdlib_rel" ] \
     || die "$a: unexpected archive layout (no python/bin/python3 or python/$stdlib_rel)"
   prune "$tree"
-  while IFS= read -r rel; do
-    [ -f "$tree/$rel" ] || die "$a: licence file missing after prune: $rel"
-  done <<EOF
-$licences
-EOF
+  add_licences "$tree"
+  check_licences "$tree" "$a"
 done
 
 # 2. precompile every tree with the host-arch interpreter (bytecode is arch-independent)

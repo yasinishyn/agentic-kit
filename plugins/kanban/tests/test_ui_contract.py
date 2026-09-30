@@ -197,6 +197,25 @@ class HeaderAndOnboardingTests(unittest.TestCase):
             self.assertIn(f'"{event}"', app, event)
         self.assertIn('plugin_python === "missing"', app)
 
+    def test_welcome_first_card_step_has_new_ticket(self):
+        # FR-03: the New-ticket control sits in the header and in the welcome's first-card step
+        app = read(UI / "app.js")
+        welcome = app[app.index("function renderWelcome"):app.index("// ---------------------------------------------------------------- modal dialogs")]
+        s3 = welcome[welcome.rindex("s3 = step(3"):]
+        self.assertIn('"New ticket"', welcome)
+        self.assertIn("toggleNewTicket(true)", welcome)
+        self.assertIn("newTicketBtn", s3)
+
+    def test_drawer_close_returns_focus(self):
+        # NFR-02: closing the ticket panel (Close, Escape) puts focus back where it was opened, not the page start
+        app = read(UI / "app.js")
+        opener = app[app.index("function openDrawer"):app.index("function stageLabel")]
+        self.assertIn("document.activeElement", opener)
+        close = app[app.index("function closeDrawer"):app.index("function openDrawer")]
+        self.assertIn(".focus()", close)
+        self.assertIn("data-ticket", close)  # the card is re-rendered on board.changed: find it again by id
+        self.assertIn("isConnected", close)
+
     def test_add_project_uses_dry_run(self):
         app = read(UI / "app.js")
         self.assertIn('"/api/projects/add"', app)

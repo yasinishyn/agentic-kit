@@ -86,6 +86,10 @@ including pinning sums, runtime licence notices, and version 0.3.1 in all five p
 - `plugins/kanban/docs/img/**`
 - `tests/test_versions_and_docs.py`
 
+Amended by Q18 (2026-09-30): `LICENSES/NOTICE.md` lists the component licences shipped inside Kanban.app (from
+PRD-01's `app/licences/python-runtime/`), and records why zlib, ncurses and libedit are not shipped (macOS system
+libraries).
+
 ## Forbidden files
 - Other PRDs' owned files beyond the listed lines; `.claude/**`; `.SDD/templates/**`
 

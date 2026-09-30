@@ -455,6 +455,11 @@ def parse_repo(url: str) -> tuple[str, str] | None:
     return m.group(1), m.group(2)
 
 
+def redact_url(url: str) -> str:
+    """A URL safe to print: any user:password@ (a clone's origin can carry a token) becomes ***@."""
+    return re.sub(r"(?<=://)[^/@\s]+@", "***@", url)
+
+
 def git_origin() -> str | None:
     try:
         url = subprocess.run(["git", "-C", str(KIT), "remote", "get-url", "origin"], capture_output=True,
@@ -535,19 +540,41 @@ def installed_app_version(app: Path) -> str | None:
     return version if isinstance(version, str) else None
 
 
-def running_under(app: Path) -> list[str]:
-    """PIDs of processes whose executable is inside `app` (the app itself, or the daemon on its bundled Python)."""
+def _ps(column: str) -> dict:
+    """pid → the `ps -axo pid=,<column>=` value (empty when ps is unavailable)."""
     try:
-        out = subprocess.run(["ps", "-axo", "pid=,comm="], capture_output=True, text=True, timeout=30).stdout
+        out = subprocess.run(["ps", "-axo", f"pid=,{column}="], capture_output=True, text=True, timeout=30).stdout
     except (OSError, subprocess.TimeoutExpired):
-        return []
-    prefixes = {str(app) + "/", str(app.resolve()) + "/"}
-    pids = []
+        return {}
+    rows = {}
     for line in out.splitlines():
         parts = line.strip().split(None, 1)
-        if len(parts) == 2 and any(parts[1].startswith(p) for p in prefixes):
-            pids.append(parts[0])
-    return pids
+        if len(parts) == 2:
+            rows[parts[0]] = parts[1]
+    return rows
+
+
+def running_under(app: Path) -> dict:
+    """Processes whose executable is inside `app`, by role: "app" (the app itself), "daemon" (pid → daemon.py path
+    of a board daemon on the bundled Python) and "other" (pids of the plugin's MCP servers and hooks in Claude
+    sessions: they run the interpreter by path, so a swapped bundle serves them after a restart; they never block)."""
+    prefixes = tuple({str(app) + "/", str(app.resolve()) + "/"})
+    macos = tuple(p + "Contents/MacOS/" for p in prefixes)
+    found = {"app": [], "daemon": {}, "other": []}
+    args = None
+    for pid, exe in _ps("comm").items():
+        if not exe.startswith(prefixes):
+            continue
+        if exe.startswith(macos):
+            found["app"].append(pid)
+            continue
+        args = _ps("args") if args is None else args
+        script = next((a for a in args.get(pid, "").split() if a.endswith("/daemon.py")), None)
+        if script:
+            found["daemon"][pid] = script
+        else:
+            found["other"].append(pid)
+    return found
 
 
 def download_kanban_app(dry: bool, update: bool = False, yes: bool = False) -> tuple[bool, dict | None]:
@@ -561,7 +588,7 @@ def download_kanban_app(dry: bool, update: bool = False, yes: bool = False) -> t
     repo = release_repo()
     parsed = parse_repo(repo)
     if not parsed:
-        print(f"  Skipped ({repo}): downloads need a github.com repository; use --from-source")
+        print(f"  Skipped ({redact_url(repo)}): downloads need a github.com repository; use --from-source")
         return dry, None
     owner, name = parsed
     base = f"https://github.com/{owner}/{name}/releases"
@@ -691,17 +718,24 @@ def download_kanban_app(dry: bool, update: bool = False, yes: bool = False) -> t
         new_version = str(info.get("CFBundleShortVersionString", "unknown"))
 
         retry = f"python3 {KIT / 'install.py'} --only kanban-app"
-        pids = running_under(dest)
-        while pids:
+        found = running_under(dest)
+        while found["app"] or found["daemon"]:
+            # the app and the board daemon block the swap; quitting the app does not stop the daemon (never killed)
+            steps = []
+            if found["app"]:
+                steps.append(f"Quit Kanban (pid {', '.join(found['app'])})")
+            for pid, script in found["daemon"].items():
+                steps.append(f"stop the board daemon (pid {pid}): "
+                             f"sh {Path(script).with_name('kpython')} {script} --stop")
             if yes or not sys.stdin.isatty():
-                print(f"  Update deferred: Kanban is running from {dest} (pid {', '.join(pids)}); nothing replaced. "
-                      f"Quit it, then run `{retry}`.")
+                print(f"  Update deferred: Kanban is running from {dest}; nothing replaced. "
+                      f"{'; '.join(steps)}; then run `{retry}`.")
                 return False, None
-            reply = input("  Kanban is running: quit Kanban and press Enter, or s to skip: ").strip().lower()
+            reply = input(f"  Kanban is running. {'; '.join(steps)}; then press Enter, or s to skip: ").strip().lower()
             if reply == "s":
                 print(f"  Skipped: run `{retry}` after quitting Kanban.")
                 return False, None
-            pids = running_under(dest)
+            found = running_under(dest)
 
         old = apps / f".Kanban.app.old-{os.getpid()}"
         had_old = dest.exists() or dest.is_symlink()
@@ -718,6 +752,9 @@ def download_kanban_app(dry: bool, update: bool = False, yes: bool = False) -> t
         else:
             shutil.rmtree(old, ignore_errors=True)
         print(f"  Installed Kanban.app {new_version} ({tag}) to {dest}.")
+        if found["other"]:
+            print(f"  Note: {len(found['other'])} Claude process(es) (the kanban plugin's MCP server or hooks) still run "
+                  "the previous bundled Python; restart those Claude sessions to use the new one.")
         if Path("/Applications/Kanban.app").exists():
             print("  Note: /Applications/Kanban.app also exists; it was left alone (the plugin's kpython launcher"
                   " prefers ~/Applications).")

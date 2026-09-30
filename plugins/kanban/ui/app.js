@@ -499,8 +499,11 @@
       s2 = step(2, "Connect Claude", ob.connected ? "A Claude session with channels is connected."
                   : "Start Claude Code with channels in this project so board moves reach it.",
                 ob.connected ? "done" : "active", extra);
-      s3 = step(3, "Move your first card", ob.first_move ? "Done." : "Drag a card to the next column, or use its ⋯ menu.",
-                ob.first_move ? "done" : ob.connected ? "active" : "locked");
+      const newTicketBtn = el("button", {type: "button", className: "btn-ghost", text: "New ticket"});
+      newTicketBtn.addEventListener("click", () => toggleNewTicket(true));
+      s3 = step(3, "Move your first card", ob.first_move ? "Done." : "Create a ticket, then drag its card to the next "
+                  + "column, or use its ⋯ menu.",
+                ob.first_move ? "done" : ob.connected ? "active" : "locked", ob.first_move ? [] : [newTicketBtn]);
     }
     const head = el("div", {className: "welcome-head"}, [
       el("h2", {id: "welcome-title", text: "Get started"}),
@@ -792,12 +795,27 @@
   }
 
   // ---------------------------------------------------------------- ticket panel (tabs)
+  let drawerOpener = null;
+
   function closeDrawer() {
+    const drawer = $("drawer");
+    const hadFocus = !drawer.hidden && drawer.contains(document.activeElement);
+    const ticket = state.drawerTicket;
     state.drawerTicket = null;
-    $("drawer").hidden = true;
+    drawer.hidden = true;
+    if (!hadFocus) return;  // closed by a project switch or a refresh: leave focus where the user put it
+    // back to what opened the panel; its card may have been re-rendered since, so find it again by id
+    let target = drawerOpener && drawerOpener.isConnected ? drawerOpener : null;
+    if (!target && ticket) {
+      const card = $("board").querySelector(`[data-ticket="${CSS.escape(ticket.id)}"]`);
+      target = card && (card.querySelector("button.title") || card);
+    }
+    (target || $("board")).focus();
   }
 
   function openDrawer(ticket) {
+    const active = document.activeElement;
+    if (!$("drawer").contains(active)) drawerOpener = active && active !== document.body ? active : null;
     closeSheet(false);
     if (!state.drawerTicket || state.drawerTicket.id !== ticket.id) state.drawerTab = "overview";
     state.drawerTicket = ticket;

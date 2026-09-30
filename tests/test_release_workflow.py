@@ -239,6 +239,14 @@ class PackageScriptTests(unittest.TestCase):
         self.assertIn("--target universal-apple-darwin --bundles app,dmg", s)
         self.assertIn("--config src-tauri/tauri.release.conf.json", s)
 
+    def test_unsigned_dmg_holds_the_sealed_app(self):
+        # Tauri builds its DMG before the outer ad-hoc seal: an unsigned release must rebuild the DMG from the app
+        # that was sealed and verified, or Kanban.dmg ships an unsealed bundle (Gatekeeper: "damaged")
+        s = self.script
+        self.assertRegex(s, r'hdiutil create [^\n]*-srcfolder')
+        self.assertLess(s.index("codesign --force -s - \"$app\""), s.index("hdiutil create"))
+        self.assertLess(s.index('verify "$app"'), s.index("hdiutil create"))
+
     def test_bundled_python_smoke(self):
         s = self.script
         self.assertIn("import ssl, sqlite3, ctypes, json", s)
@@ -268,6 +276,25 @@ class PackageScriptTests(unittest.TestCase):
         self.assertIn("fetch-python.sh", r.stderr)
         self.assertIn("x86_64", r.stderr)
 
+
+    def test_runtime_without_licences_exits_1(self):
+        # a runtime fetched before Q18 has no licences/: packaging it would drop the texts NOTICE.md promises
+        lock = json.loads((APP / "python.lock").read_text())
+        with tempfile.TemporaryDirectory() as tmp:
+            for a in ("arm64", "x86_64"):
+                fake = Path(tmp) / a / "bin" / "python3"
+                fake.parent.mkdir(parents=True)
+                fake.write_text("#!/bin/sh\n")
+                fake.chmod(0o755)
+                for rel in lock["licence_files"]:
+                    if not rel.startswith("licences/"):
+                        (Path(tmp) / a / rel).parent.mkdir(parents=True, exist_ok=True)
+                        (Path(tmp) / a / rel).write_text("cpython licence")
+            env = {**os.environ, "KANBAN_PY_RESOURCES": tmp, "DIST_DIR": str(Path(tmp) / "dist")}
+            r = subprocess.run(["bash", str(PACKAGE), "--host-only"], capture_output=True, text=True, env=env)
+        self.assertEqual(r.returncode, 1, r.stderr)
+        self.assertIn("licence", r.stderr)
+        self.assertIn("--licences-only", r.stderr)
 
 class ConfigTests(unittest.TestCase):
     def test_entitlements_start_empty(self):
