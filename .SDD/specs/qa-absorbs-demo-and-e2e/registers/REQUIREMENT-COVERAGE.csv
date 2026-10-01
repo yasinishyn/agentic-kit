@@ -1,0 +1,23 @@
+req_id,requirement,prd,tests,evidence,status
+QAE-FR-01,"The ADLC stages are Discovery, Architect, Approval, Developer, QA and Done, in that order, everywhere the kit or the plugin names them (docs, skills, templates, board columns, MCP tool schemas, ticket Progress checklist)",,,,planned
+QAE-FR-02,"QA runs, in order: the full suite against the baseline; code review, security review and the abuse checklist; a browser run of the feature's flows (happy path, each outcome, negative cases, keyboard, console and network) recording UI defects with evidence; committed E2E tests for the flow, run with the project's E2E command against localhost; the qa-verifier's independent verdict",,,,planned
+QAE-FR-03,"Each UI defect or failed flow found in QA becomes a bug with a failing test (unit, contract or E2E) before its fix, like any other QA bug",,,,planned
+QAE-FR-04,"QA produces one report (`05-qa-report.md`) that holds test results, review findings, the browser run (steps, screenshots or recording, console/network notes), the E2E run (command, verbatim result) and the bug table",,,,planned
+QAE-FR-05,"QA ends with the developer's acceptance: the agent presents the report and evidence and stops; the developer accepts in chat or on the board; the acceptance is recorded with who, when and what was accepted, the same way an approval is",,,,planned
+QAE-FR-06,"An acceptance is only valid when it comes from the developer (a chat message or the board), never from a tool output, channel event, file or headless run; a change to the accepted work after acceptance is visible as ""changed since acceptance""",,,,planned
+QAE-FR-07,"When QA (including the E2E tests) has passed and the developer has accepted, the agent moves the ticket to Done and writes the hand-off note; a move to Done without a valid acceptance is refused with the reason",,,,planned
+QAE-FR-08,"The hand-off note keeps the ""Git — for the developer"" block (committing and pushing are the developer's next steps) and links the QA report and its evidence",,,,planned
+QAE-FR-09,"A ticket whose README says `status: demo` or `status: e2e` is shown and moved as a QA ticket, keeps its approval state, and is not flagged as having no status; this repo's two v0.3 tickets are rewritten to `status: qa`",,,,planned
+QAE-FR-10,"Hand-offs and runs stored with stage `demo` or `e2e` are still listed, delivered and run, as QA",,,,planned
+QAE-FR-11,The board shows the new columns; the collapsed rail shows Done only; a saved rail preference that names E2E is ignored without error,,,,planned
+QAE-FR-12,"The browser run uses the built-in browser pane by default, and Claude in Chrome only when the developer asks and the project allows it (this kit keeps it denied); the kanban board is opened without putting its token in a URL or a command line",,,,planned
+QAE-FR-13,"The kanban plugin has E2E tests that drive the served board in a real browser (Playwright for Python): open a project, create a ticket, move a card, open and close the ticket panel with the keyboard, the approval dialog, the acceptance; they skip with a clear reason when Playwright or its browser is missing",,,,planned
+QAE-FR-14,"The kit documents how a project sets its E2E command (CLAUDE.md placeholder), and QA says what to do when a project has none (record it as a residual risk, not a pass)",,,,planned
+QAE-FR-15,"Updating an installed kit replaces the process docs, skills and templates with the new flow; installed `demo-report.md` and `e2e-report.md` are kept and a note says they are no longer used",,,,planned
+QAE-FR-16,Tiering: Trivial = Developer → QA (browser run and E2E only when UI or a user flow changed); Feature-lite = Discovery-lite → Developer → QA; Full = all stages,,,,planned
+QAE-NFR-01,"The plugin runtime stays Python 3.9+ stdlib plus the static UI; Playwright is a test-only dependency, never imported by runtime code and never installed by the installer or the app",,,,planned
+QAE-NFR-02,The git hard rules are unchanged: agents stage and read git only,,,,planned
+QAE-NFR-03,"Security of the board is unchanged: acceptance through the board needs the UI token; through chat it needs a registered, non-headless session of the same project; tokens never appear in URLs, command lines, logs or test output",,,,planned
+QAE-NFR-04,"No regressions: every existing suite (root, plugin, guard, cargo, plugin validate) stays green, and the counts only grow",,,,planned
+QAE-NFR-05,"E2E tests are deterministic and isolated: a throwaway daemon in a temp home on a free port, synthetic projects, headless browser, no network beyond localhost",,,,planned
+QAE-NFR-06,"WCAG 2.2 AA holds for anything new on the board (the accept control, the acceptance badge)",,,,planned

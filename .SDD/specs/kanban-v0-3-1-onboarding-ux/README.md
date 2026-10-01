@@ -1,6 +1,6 @@
 ---
 title: Kanban v0.3.1: onboarding and UX
-status: e2e
+status: demo
 updated: 2026-09-30
 ---
 
@@ -14,7 +14,7 @@ Make the Kanban desktop app usable from first launch: a guided first run, adding
 - [x] Approval
 - [x] Developer
 - [x] QA
-- [x] Demo
+- [ ] Demo
 - [ ] E2E
 
 ## Files

@@ -13,7 +13,7 @@ Baseline at f600ff9: root 11, plugin 131, cargo 15.
 | Guard | `bash .claude/hooks/test_guard_bash.sh` | passed=62 failed=0 |
 | Cargo | `cargo test --locked` (src-tauri) | 22 passed; 0 failed (baseline 15) |
 | Validate | `claude plugin validate plugins/kanban` · `claude plugin validate .` | ✔ Validation passed ×2 |
-| Plugin ×5 | `python3 -m unittest discover -s plugins/kanban/tests -p 'test_*.py'` | Ran 193 tests · OK in 5/5 runs, 0 failures (baseline 131); after B10: Ran 194 · OK 3/3 |
+| Plugin ×5 | `python3 -m unittest discover -s plugins/kanban/tests -p 'test_*.py'` | Ran 193 tests · OK in 5/5 runs, 0 failures (baseline 131); after B10–B11: Ran 195 · OK 3/3 |
 
 The real `~/Library/Application Support/Kanban` was unchanged by the runs. `test_package_host_only` stays skipped
 (needs `KANBAN_TEST_PACKAGE=1`, fetched runtimes and a full build).
@@ -61,6 +61,7 @@ signed/unsigned artefacts, real download, real bundled runtime).
 | B8 | Medium | Drawer close loses focus | NFR-02 | `plugins/kanban/tests/test_ui_contract.py::test_drawer_close_returns_focus` | Focus back on the opener (or its re-rendered card) / page start | fixed (browser re-check → Demo) | Inherited from v0.3 · `openDrawer` remembers the opener; `closeDrawer` restores it (or the card found by `data-ticket`, else the board) only when focus was in the drawer |
 | B9 | Medium | Welcome step 3 lacks New ticket | FR-03 | `plugins/kanban/tests/test_ui_contract.py::test_welcome_first_card_step_has_new_ticket` | New ticket button in step 3 / text only | fixed (browser re-check → Demo) | Dropped in PRD-05 · button opens the header popover |
 | B10 | Critical | Daemon leaks one SQLite connection per request; after ~120 requests every call fails ("Load failed" in the app) | NFR-04 | `plugins/kanban/tests/test_daemon.py::test_requests_do_not_leak_db_connections` | kanban.db handles stay flat / 155 handles after 150 requests | fixed (found in the installed 0.3.0 app on 2026-09-30: 123 connections, 246 of 256 fds, 735 "unable to open database file") | `Store` kept every thread's connection in `_all`; each request runs on a new thread · a new connection closes those of ended threads |
+| B11 | High | `daemon.py --stop` says "not running" for a daemon that is alive but not answering, so a wedged daemon cannot be stopped | NFR-04 | `plugins/kanban/tests/test_daemon.py::test_stop_a_daemon_that_does_not_answer` | Stopped / "The board daemon is not running." | fixed (seen on 2026-09-30 with the B10-wedged daemon) | `stop` trusted the health probe only · when the recorded pid is alive and holds `daemon.lock` (proof it is this home's daemon), terminate it (SIGTERM, then SIGKILL) |
 
 Severity: **Critical** blocks core functionality, no workaround · **High** major function broken, workaround exists ·
 **Medium** partly works, minor impact · **Low** cosmetic. Fixed one at a time; a fix never edits the test that caught
